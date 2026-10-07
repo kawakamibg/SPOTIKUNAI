@@ -1,17 +1,31 @@
 import React from 'react';
-import { StyleSheet, Text, View, ScrollView } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity } from 'react-native';
 
 // Importações dos pacotes de interface
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Animatable from 'react-native-animatable';
+import { useRouter } from 'expo-router';
 
-export default function App() {
+export default function Home() {
+  const router = useRouter();
+
   return (
     <LinearGradient
       colors={['#1DB954', '#191414']}
       style={styles.container}
     >
+      {/* Botão sutil no canto superior direito */}
+      <View style={styles.topHeader}>
+        <TouchableOpacity 
+          style={styles.topButton} 
+          onPress={() => router.push('/cadastro')}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.topButtonText}>Cadastrar</Text>
+        </TouchableOpacity>
+      </View>
+
       <ScrollView contentContainerStyle={styles.scroll}>
         
         {/* Título principal com animação suave */}
@@ -39,10 +53,31 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  topHeader: {
+    width: '100%',
+    paddingHorizontal: 24,
+    paddingTop: 40,
+    alignItems: 'flex-end',
+    zIndex: 10,
+  },
+  topButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+    paddingVertical: 8,
+    paddingHorizontal: 18,
+    borderRadius: 20,
+    cursor: 'pointer',
+  },
+  topButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 14,
+  },
   scroll: {
     padding: 24,
     alignItems: 'center',
-    paddingTop: 80,
+    paddingTop: 20,
     flexGrow: 1,
   },
   title: {
