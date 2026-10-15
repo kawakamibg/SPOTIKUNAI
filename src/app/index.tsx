@@ -3,37 +3,38 @@ import {
   StyleSheet, 
   Text, 
   View, 
-  ScrollView, 
   TouchableOpacity, 
   Modal, 
   TextInput, 
   Alert,
+  FlatList,
+  Switch,
   Image
 } from 'react-native';
 
-// Importações dos pacotes de interface
+// Importações do Expo Router
+import { Link, useRouter } from 'expo-router';
+
+// Componentes e pacotes visuais
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Animatable from 'react-native-animatable';
-import { useRouter } from 'expo-router';
+import AlbumCard from '../components/AlbumCard';
 
-// Interface para definir a estrutura de uma avaliação
-interface Avaliacao {
-  id: string;
-  nomeAlbum: string;
-  nomeArtista: string;
-  dataLancamento: string;
-  urlImagem: string;
-  nota: number; // Nota de 0 a 5
-}
+// Importa a lista inicial e a interface do ficheiro compartilhado de dados
+import { ALBUNS_INICIAIS, Album } from '../data/albuns';
 
 export default function Home() {
+  // Hook do Expo Router para navegação programática
   const router = useRouter();
 
-  // Lista onde as avaliações ficam salvas na memória
-  const [avaliacoes, setAvaliacoes] = useState<Avaliacao[]>([]);
+  // State principal da lista de álbuns
+  const [avaliacoes, setAvaliacoes] = useState<Album[]>(ALBUNS_INICIAIS);
 
-  // Estados para controlar o Modal e os dados dos campos
+  // State de controlo de exibição (Modo Compacto)
+  const [modoCompacto, setModoCompacto] = useState(false);
+
+  // States do Modal de Cadastro de nova avaliação
   const [modalVisible, setModalVisible] = useState(false);
   const [nomeAlbum, setNomeAlbum] = useState('');
   const [nomeArtista, setNomeArtista] = useState('');
@@ -41,26 +42,33 @@ export default function Home() {
   const [urlImagem, setUrlImagem] = useState('');
   const [nota, setNota] = useState<number>(0);
 
-  // Função para salvar a avaliação
+  // Função para abrir a tela de detalhes programaticamente passando o ID dinâmico
+  function handleAbrirDetalhes(id: string) {
+    console.log(`[Navegação Programática] Transição disparada via toque no card ID: ${id}`);
+    router.push(`/detalhes/${id}` as any);
+  }
+
+  // Função para salvar uma nova avaliação na lista local
   const handleSalvarAvaliacao = () => {
     if (!nomeAlbum.trim() || !nomeArtista.trim()) {
       Alert.alert("Atenção", "Por favor, preencha pelo menos o nome do álbum e do artista.");
       return;
     }
 
-    const novaAvaliacao: Avaliacao = {
+    const novaAvaliacao: Album = {
       id: Date.now().toString(),
       nomeAlbum: nomeAlbum.trim(),
       nomeArtista: nomeArtista.trim(),
       dataLancamento: dataLancamento.trim(),
       urlImagem: urlImagem.trim(),
       nota: nota,
+      genero: 'Gênero não informado',
+      descricao: 'Avaliação adicionada recentemente pelo usuário.'
     };
 
-    // Adiciona a nova avaliação no topo da lista
     setAvaliacoes([novaAvaliacao, ...avaliacoes]);
 
-    // Limpa os campos do formulário e fecha o modal
+    // Limpar os campos do formulário
     setNomeAlbum('');
     setNomeArtista('');
     setDataLancamento('');
@@ -74,49 +82,77 @@ export default function Home() {
       colors={['#1DB954', '#191414']}
       style={styles.container}
     >
-      {/* Botão sutil no canto superior direito */}
+      {/* Botão de navegação estática no topo */}
       <View style={styles.topHeader}>
         <TouchableOpacity 
           style={styles.topButton} 
-          onPress={() => router.push('/cadastro')}
+          onPress={() => router.push('/cadastro' as any)}
           activeOpacity={0.7}
         >
           <Text style={styles.topButtonText}>Cadastrar</Text>
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll}>
-        
-        {/* Título principal com animação suave */}
-        <Animatable.Text animation="fadeInDown" duration={1500} style={styles.title}>
-          Spotikunai
-        </Animatable.Text>
-
-        <Text style={styles.subtitle}>Sua rede social de álbuns</Text>
-
-        {/* --- SE NÃO HOUVER AVALIAÇÕES: Exibe estado inicial --- */}
-        {avaliacoes.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Ionicons name="disc-outline" size={64} color="#1DB954" style={styles.icon} />
-            <Text style={styles.emptyTitle}>Nenhuma avaliação por aqui</Text>
-            <Text style={styles.emptySubtitle}>
-              Adicione o primeiro álbum e compartilhe a sua opinião!
-            </Text>
-
-            <TouchableOpacity 
-              style={styles.addReviewButton} 
-              onPress={() => setModalVisible(true)}
-              activeOpacity={0.8}
+      {/* FlatList principal renderizando os itens da lista com AlbumCard */}
+      <FlatList
+        data={avaliacoes}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <AlbumCard
+            id={item.id}
+            nomeAlbum={item.nomeAlbum}
+            nomeArtista={item.nomeArtista}
+            dataLancamento={item.dataLancamento}
+            urlImagem={item.urlImagem}
+            nota={item.nota}
+            modoCompacto={modoCompacto}
+            onPress={() => handleAbrirDetalhes(item.id)}
+          />
+        )}
+        contentContainerStyle={styles.listContent}
+        ListHeaderComponent={
+          <View style={styles.headerComponent}>
+            
+            {/* TÍTULO E LOGO COM ANIMAÇÃO */}
+            <Animatable.View 
+              animation="fadeInDown" 
+              duration={1500} 
+              style={styles.titleContainer}
             >
-              <Ionicons name="add-circle-outline" size={20} color="#000" style={{ marginRight: 8 }} />
-              <Text style={styles.addReviewButtonText}>Adicionar Avaliação</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          /* --- SE HOUVER AVALIAÇÕES: Exibe a lista de cards estilo Letterboxd --- */
-          <View style={styles.feedContainer}>
+              <Image 
+                source={require('../../assets/images/logo.png')} 
+                style={styles.logoImage} 
+                resizeMode="contain"
+              />
+              <Text style={styles.title}>Spotikunai</Text>
+            </Animatable.View>
+
+            <Text style={styles.subtitle}>Sua rede social de álbuns</Text>
+
+            {/* Exemplo de Link Declarativo */}
+            <View style={styles.featuredContainer}>
+              <Text style={styles.featuredLabel}>Álbum em Destaque (Link Declarativo):</Text>
+              <Link href={"/detalhes/1" as any} style={styles.featuredLink}>
+                <Text style={styles.featuredLinkText}>⭐ Ver Destaque: The Dark Side of the Moon</Text>
+              </Link>
+            </View>
+
+            {/* Switch para Modo Compacto */}
+            <View style={styles.modeToggleContainer}>
+              <Text style={styles.modeToggleText}>
+                {modoCompacto ? 'Modo Compacto Ativo' : 'Modo Completo Ativo'}
+              </Text>
+              <Switch
+                value={modoCompacto}
+                onValueChange={setModoCompacto}
+                trackColor={{ false: '#383838', true: '#1DB954' }}
+                thumbColor={modoCompacto ? '#FFFFFF' : '#B3B3B3'}
+              />
+            </View>
+
+            {/* Cabeçalho do Feed */}
             <View style={styles.feedHeader}>
-              <Text style={styles.feedTitle}>Minhas Avaliações ({avaliacoes.length})</Text>
+              <Text style={styles.feedTitle}>Álbuns Avaliados ({avaliacoes.length})</Text>
               <TouchableOpacity 
                 style={styles.addReviewButtonSmall} 
                 onPress={() => setModalVisible(true)}
@@ -126,59 +162,11 @@ export default function Home() {
                 <Text style={styles.addReviewButtonSmallText}>Nova</Text>
               </TouchableOpacity>
             </View>
-
-            {/* Renderização de cada Card de Avaliação */}
-            {avaliacoes.map((item) => (
-              <View key={item.id} style={styles.cardLetterboxd}>
-                {/* Capa do Álbum ou Placeholder */}
-                {item.urlImagem ? (
-                  <Image 
-                    source={{ uri: item.urlImagem }} 
-                    style={styles.albumCover}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <View style={[styles.albumCover, styles.albumCoverPlaceholder]}>
-                    <Ionicons name="disc" size={36} color="#1DB954" />
-                  </View>
-                )}
-
-                {/* Informações do Álbum */}
-                <View style={styles.cardInfo}>
-                  <Text style={styles.albumTitle} numberOfLines={1}>
-                    {item.nomeAlbum}
-                  </Text>
-                  <Text style={styles.artistName} numberOfLines={1}>
-                    {item.nomeArtista}
-                  </Text>
-                  
-                  {/* Estrelas da Nota */}
-                  <View style={styles.starsRow}>
-                    {[1, 2, 3, 4, 5].map((starIndex) => (
-                      <Ionicons
-                        key={starIndex}
-                        name={starIndex <= item.nota ? "star" : "star-outline"}
-                        size={16}
-                        color="#FFD700"
-                        style={{ marginRight: 2 }}
-                      />
-                    ))}
-                  </View>
-
-                  {item.dataLancamento ? (
-                    <Text style={styles.releaseDate}>
-                      Lançamento: {item.dataLancamento}
-                    </Text>
-                  ) : null}
-                </View>
-              </View>
-            ))}
           </View>
-        )}
+        }
+      />
 
-      </ScrollView>
-
-      {/* --- Mini Aba / Modal de Nova Avaliação --- */}
+      {/* Modal para Adicionar Nova Avaliação */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -187,8 +175,6 @@ export default function Home() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
-            
-            {/* Cabeçalho do Modal */}
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Nova Avaliação</Text>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
@@ -196,7 +182,6 @@ export default function Home() {
               </TouchableOpacity>
             </View>
 
-            {/* Campo: Nome do Álbum */}
             <Text style={styles.inputLabel}>Nome do Álbum *</Text>
             <TextInput
               style={styles.input}
@@ -206,7 +191,6 @@ export default function Home() {
               onChangeText={setNomeAlbum}
             />
 
-            {/* Campo: Nome do Artista */}
             <Text style={styles.inputLabel}>Nome do Artista *</Text>
             <TextInput
               style={styles.input}
@@ -216,7 +200,6 @@ export default function Home() {
               onChangeText={setNomeArtista}
             />
 
-            {/* Campo: Avaliação de Estrelas (0 a 5) */}
             <Text style={styles.inputLabel}>Sua Nota</Text>
             <View style={styles.starPickerContainer}>
               {[1, 2, 3, 4, 5].map((starIndex) => (
@@ -235,17 +218,15 @@ export default function Home() {
               ))}
             </View>
 
-            {/* Campo: Data de Lançamento */}
             <Text style={styles.inputLabel}>Data de Lançamento</Text>
             <TextInput
               style={styles.input}
-              placeholder="Ex: 1973 ou 01/03/1973"
+              placeholder="Ex: 1973"
               placeholderTextColor="#777"
               value={dataLancamento}
               onChangeText={setDataLancamento}
             />
 
-            {/* Campo: URL da Imagem do Álbum */}
             <Text style={styles.inputLabel}>URL da Imagem da Capa</Text>
             <TextInput
               style={styles.input}
@@ -257,7 +238,6 @@ export default function Home() {
               keyboardType="url"
             />
 
-            {/* Botões do Modal */}
             <View style={styles.modalActions}>
               <TouchableOpacity 
                 style={styles.cancelButton} 
@@ -273,11 +253,9 @@ export default function Home() {
                 <Text style={styles.saveButtonText}>Salvar</Text>
               </TouchableOpacity>
             </View>
-
           </View>
         </View>
       </Modal>
-
     </LinearGradient>
   );
 }
@@ -307,71 +285,80 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 14,
   },
-  scroll: {
-    padding: 24,
+  listContent: {
+    paddingHorizontal: 24,
+    paddingBottom: 40,
     alignItems: 'center',
-    paddingTop: 20,
-    flexGrow: 1,
+  },
+  headerComponent: {
+    alignItems: 'center',
+    width: '100%',
+    maxWidth: 500,
+  },
+  titleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+    marginBottom: 5,
+    gap: 12,
+  },
+  logoImage: {
+    width: 48,
+    height: 48,
   },
   title: {
     fontSize: 36,
     fontWeight: 'bold',
     color: '#FFF',
-    marginBottom: 5,
   },
   subtitle: {
     fontSize: 16,
     color: '#B3B3B3',
-    marginBottom: 30,
+    marginBottom: 20,
   },
-  emptyContainer: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    padding: 30,
-    borderRadius: 16,
+  featuredContainer: {
     width: '100%',
-    maxWidth: 500,
+    backgroundColor: 'rgba(29, 185, 84, 0.15)',
+    borderColor: '#1DB954',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+  },
+  featuredLabel: {
+    color: '#B3B3B3',
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  featuredLink: {
+    marginTop: 2,
+  },
+  featuredLinkText: {
+    color: '#1DB954',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  modeToggleContainer: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 20,
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    width: '100%',
+    marginBottom: 20,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.1)',
   },
-  icon: {
-    marginBottom: 15,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#FFF',
-    marginBottom: 8,
-  },
-  emptySubtitle: {
+  modeToggleText: {
+    color: '#FFFFFF',
     fontSize: 14,
-    color: '#B3B3B3',
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  addReviewButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1DB954',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 25,
-    cursor: 'pointer',
-  },
-  addReviewButtonText: {
-    color: '#000000',
-    fontWeight: 'bold',
-    fontSize: 15,
-  },
-
-  /* Feed e Cards estilo Letterboxd */
-  feedContainer: {
-    width: '100%',
-    maxWidth: 500,
-    marginTop: 10,
+    fontWeight: '600',
   },
   feedHeader: {
+    width: '100%',
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -397,54 +384,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginLeft: 4,
   },
-  cardLetterboxd: {
-    flexDirection: 'row',
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    alignItems: 'center',
-  },
-  albumCover: {
-    width: 80,
-    height: 80,
-    borderRadius: 8,
-    marginRight: 14,
-  },
-  albumCoverPlaceholder: {
-    backgroundColor: '#282828',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  cardInfo: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  albumTitle: {
-    color: '#FFFFFF',
-    fontSize: 17,
-    fontWeight: 'bold',
-    marginBottom: 2,
-  },
-  artistName: {
-    color: '#1DB954',
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  starsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  releaseDate: {
-    color: '#B3B3B3',
-    fontSize: 12,
-  },
-
-  /* Styles do Modal / Mini Aba */
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.75)',
