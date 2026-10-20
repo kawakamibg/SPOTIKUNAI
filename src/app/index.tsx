@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { 
   StyleSheet, 
   Text, 
@@ -10,25 +10,35 @@ import {
   FlatList,
   Switch,
   Image,
-  Platform
+  Platform,
+  ActivityIndicator,
+  ScrollView
 } from 'react-native';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Animatable from 'react-native-animatable';
 
 import AlbumCard from '../components/AlbumCard';
-import { ALBUNS_INICIAIS, Album } from '../data/albuns';
+import { Album } from '../data/albuns';
 import { authService, User } from '../services/authService';
+import { apiService } from '../services/apiService';
 
 const ALBUNS_STORAGE_KEY = '@spotikunai_albuns';
+
+interface ITunesAlbum {
+  collectionId: number;
+  collectionName: string;
+  artistName: string;
+  releaseDate?: string;
+  artworkUrl100?: string;
+}
 
 export default function Home() {
   const router = useRouter();
 
-  // States de Dados do Utilizador e Lista
   const [usuarioLogado, setUsuarioLogado] = useState<User | null>(null);
   const [genero, setGenero] = useState<string>('Nenhuma preferência salva');
   const [inputGeneroCustom, setInputGeneroCustom] = useState<string>('');
@@ -36,21 +46,29 @@ export default function Home() {
 
   const [modoCompacto, setModoCompacto] = useState(false);
 
-  // States do Modal de Avaliação
+  // States do Modal
   const [modalVisible, setModalVisible] = useState(false);
+  const [etapaModal, setEtapaModal] = useState<'busca' | 'formulario'>('busca');
+  const [termoBusca, setTermoBusca] = useState('');
+  const [resultadosBusca, setResultadosBusca] = useState<ITunesAlbum[]>([]);
+  const [buscandoAPI, setBuscandoAPI] = useState(false);
+
+  // Campos da Avaliação
   const [editingId, setEditingId] = useState<string | null>(null);
   const [nomeAlbum, setNomeAlbum] = useState('');
   const [nomeArtista, setNomeArtista] = useState('');
   const [dataLancamento, setDataLancamento] = useState('');
   const [urlImagem, setUrlImagem] = useState('');
-  const [nota, setNota] = useState<number>(0);
+  const [nota, setNota] = useState<number>(5);
   const [reviewText, setReviewText] = useState('');
 
-  useEffect(() => {
-    carregarUsuario();
-    carregarGenero();
-    carregarAlbuns();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      carregarUsuario();
+      carregarGenero();
+      carregarAlbuns();
+    }, [])
+  );
 
   const carregarUsuario = async () => {
     const user = await authService.getUsuarioAtual();
@@ -59,23 +77,79 @@ export default function Home() {
 
   async function carregarAlbuns() {
     try {
+      const albunsAPI = await apiService.getAlbuns();
+      
+      if (albunsAPI && albunsAPI.length > 0) {
+        const formatados: Album[] = albunsAPI.map((item: any) => ({
+          id: String(item.id),
+          nomeAlbum: item.nomeAlbum || 'Sem título',
+          nomeArtista: item.nomeArtista || 'Artista desconhecido',
+          dataLancamento: String(item.ano || '2024'),
+          urlImagem: item.urlImagem || '',
+          nota: item.nota || 5,
+          genero: item.genero || 'Gênero não informado',
+          descricao: item.descricao || 'Álbum vindo do servidor Express.',
+        }));
+
+        setAvaliacoes(formatados);
+        await AsyncStorage.setItem(ALBUNS_STORAGE_KEY, JSON.stringify(formatados));
+        return;
+      }
+
       const albunsSalvosRaw = await AsyncStorage.getItem(ALBUNS_STORAGE_KEY);
       if (albunsSalvosRaw !== null) {
-        const albunsSalvos: Album[] = JSON.parse(albunsSalvosRaw);
-        ALBUNS_INICIAIS.length = 0;
-        ALBUNS_INICIAIS.push(...albunsSalvos);
-        setAvaliacoes(albunsSalvos);
-      } else {
-        await AsyncStorage.setItem(ALBUNS_STORAGE_KEY, JSON.stringify([]));
-        ALBUNS_INICIAIS.length = 0;
-        setAvaliacoes([]);
+        setAvaliacoes(JSON.parse(albunsSalvosRaw));
       }
     } catch (erro) {
       console.error('Erro ao carregar álbuns:', erro);
     }
   }
 
-  // Práticas AsyncStorage
+  // Busca lista de álbuns na API pública (iTunes API)
+  const executarBuscaAPI = async () => {
+    if (!termoBusca.trim()) {
+      Alert.alert('Atenção', 'Digite o nome do álbum ou artista para pesquisar.');
+      return;
+    }
+
+    setBuscandoAPI(true);
+    setResultadosBusca([]);
+
+    try {
+      const query = encodeURIComponent(termoBusca.trim());
+      const response = await fetch(`https://itunes.apple.com/search?term=${query}&entity=album&limit=6`);
+      const data = await response.json();
+
+      if (data.results && data.results.length > 0) {
+        setResultadosBusca(data.results);
+      } else {
+        Alert.alert('Nenhum resultado', 'Nenhum álbum foi encontrado com esse termo.');
+      }
+    } catch (error) {
+      console.error('Erro ao buscar na API:', error);
+      Alert.alert('Erro', 'Não foi possível conectar ao serviço de busca de álbuns.');
+    } finally {
+      setBuscandoAPI(false);
+    }
+  };
+
+  // Ao clicar em um álbum da lista encontrada
+  const selecionarAlbumEAvancar = (item: ITunesAlbum) => {
+    setNomeAlbum(item.collectionName || '');
+    setNomeArtista(item.artistName || '');
+    setDataLancamento(item.releaseDate ? item.releaseDate.substring(0, 4) : '2024');
+    
+    if (item.artworkUrl100) {
+      setUrlImagem(item.artworkUrl100.replace('100x100bb', '600x600bb'));
+    } else {
+      setUrlImagem('');
+    }
+
+    setNota(5);
+    setReviewText('');
+    setEtapaModal('formulario');
+  };
+
   async function carregarGenero() {
     try {
       const valor = await AsyncStorage.getItem('genero_favorito');
@@ -122,12 +196,15 @@ export default function Home() {
 
   const handleAbrirCriar = () => {
     setEditingId(null);
+    setTermoBusca('');
+    setResultadosBusca([]);
     setNomeAlbum('');
     setNomeArtista('');
     setDataLancamento('');
     setUrlImagem('');
-    setNota(0);
+    setNota(5);
     setReviewText('');
+    setEtapaModal('busca');
     setModalVisible(true);
   };
 
@@ -139,16 +216,14 @@ export default function Home() {
     setUrlImagem(item.urlImagem || '');
     setNota(item.nota);
     setReviewText(item.descricao || '');
+    setEtapaModal('formulario');
     setModalVisible(true);
   };
 
   const handleDeletar = (id: string, nome: string) => {
     const executarExclusao = async () => {
-      const novaLista = avaliacoes.filter(item => item.id !== id);
-      ALBUNS_INICIAIS.length = 0;
-      ALBUNS_INICIAIS.push(...novaLista);
-      await AsyncStorage.setItem(ALBUNS_STORAGE_KEY, JSON.stringify(novaLista));
-      setAvaliacoes(novaLista);
+      await apiService.deletarAlbum(id);
+      await carregarAlbuns();
     };
 
     if (Platform.OS === 'web') {
@@ -172,57 +247,55 @@ export default function Home() {
       return;
     }
 
-    let novaLista: Album[] = [];
-
     if (editingId) {
-      novaLista = avaliacoes.map((item) => {
-        if (item.id === editingId) {
-          return {
-            ...item,
-            nomeAlbum: nomeAlbum.trim(),
-            nomeArtista: nomeArtista.trim(),
-            dataLancamento: dataLancamento.trim() || '2024',
-            urlImagem: urlImagem.trim(),
-            nota: nota,
-            descricao: reviewText.trim() || 'Sem review escrita.',
-          };
-        }
-        return item;
-      });
-    } else {
-      const novoAlbum: Album = {
-        id: Date.now().toString(),
+      await apiService.atualizarAlbum(editingId, {
         nomeAlbum: nomeAlbum.trim(),
         nomeArtista: nomeArtista.trim(),
-        dataLancamento: dataLancamento.trim() || '2024',
+        ano: dataLancamento.trim() || '2024',
         urlImagem: urlImagem.trim(),
         nota: nota,
-        genero: genero !== 'Nenhuma preferência salva' ? genero : 'Gênero não informado',
         descricao: reviewText.trim() || 'Sem review escrita.',
-      };
-      novaLista = [novoAlbum, ...avaliacoes];
+      });
+    } else {
+      await apiService.criarAlbum({
+        nomeAlbum: nomeAlbum.trim(),
+        nomeArtista: nomeArtista.trim(),
+        ano: dataLancamento.trim() || '2024',
+        urlImagem: urlImagem.trim(),
+        nota: nota,
+        descricao: reviewText.trim() || 'Sem review escrita.',
+      });
     }
 
-    ALBUNS_INICIAIS.length = 0;
-    ALBUNS_INICIAIS.push(...novaLista);
-    try {
-      await AsyncStorage.setItem(ALBUNS_STORAGE_KEY, JSON.stringify(novaLista));
-    } catch (erro) {
-      console.error('Erro ao salvar álbuns:', erro);
-    }
-
-    setAvaliacoes(novaLista);
+    await carregarAlbuns();
     setModalVisible(false);
   };
 
   return (
     <LinearGradient colors={['#1DB954', '#191414']} style={styles.container}>
       
-      {/* Topo de Autenticação */}
+      {/* Cabeçalho */}
       <View style={styles.topHeader}>
         {usuarioLogado ? (
           <View style={styles.userHeaderInfo}>
-            <Text style={styles.userGreeting}>👤 Olá, {usuarioLogado.nome}</Text>
+            <TouchableOpacity 
+              style={styles.profileAvatarButton} 
+              onPress={() => router.push('/perfil' as any)}
+              activeOpacity={0.8}
+            >
+              {usuarioLogado.fotoPerfil && usuarioLogado.fotoPerfil.trim() !== '' ? (
+                <Image 
+                  source={{ uri: usuarioLogado.fotoPerfil }} 
+                  style={styles.headerAvatarImage} 
+                />
+              ) : (
+                <View style={styles.headerAvatarPlaceholder}>
+                  <Ionicons name="person" size={20} color="#1DB954" />
+                </View>
+              )}
+              <Text style={styles.userGreeting}>{usuarioLogado.nome}</Text>
+            </TouchableOpacity>
+
             <TouchableOpacity 
               style={styles.logoutButton} 
               onPress={async () => {
@@ -266,7 +339,7 @@ export default function Home() {
           <View style={styles.emptyContainer}>
             <Ionicons name="disc-outline" size={48} color="#555" />
             <Text style={styles.emptyText}>Nenhum álbum avaliado ainda.</Text>
-            <Text style={styles.emptySubtext}>Clique no botão "+ Nova" para adicionar sua primeira avaliação!</Text>
+            <Text style={styles.emptySubtext}>Clique no botão "+ Nova" para buscar e avaliar um álbum!</Text>
           </View>
         }
         ListHeaderComponent={
@@ -283,14 +356,13 @@ export default function Home() {
 
             <Text style={styles.subtitle}>Sua rede social de álbuns</Text>
 
-            {/* CARD DAS PRÁTICAS DO PROFESSOR (1, 2, 3 e 4) */}
+            {/* Card das Práticas */}
             <View style={styles.preferenceCard}>
               <Text style={styles.preferenceTitle}>🎧 Práticas AsyncStorage</Text>
               <Text style={styles.preferenceText}>
                 Gênero Salvo: <Text style={styles.preferenceHighlight}>{genero}</Text>
               </Text>
               
-              {/* PRÁTICA 4: Entrada do Usuário (TextInput + Botão Salvar) */}
               <Text style={styles.inputPrefLabel}>Prática 4: Digite seu gênero favorito</Text>
               <View style={styles.customInputRow}>
                 <TextInput
@@ -309,7 +381,6 @@ export default function Home() {
                 </TouchableOpacity>
               </View>
 
-              {/* Botões Rápidos de Exemplo */}
               <View style={styles.preferenceButtonsContainer}>
                 <TouchableOpacity style={styles.savePrefButtonSecondary} onPress={() => salvarGenero('Rock')}>
                   <Text style={styles.savePrefButtonText}>"Rock"</Text>
@@ -324,7 +395,6 @@ export default function Home() {
                 </TouchableOpacity>
               </View>
 
-              {/* PRÁTICA 2 e 3: Carregar e Remover */}
               <View style={styles.actionRowContainer}>
                 <TouchableOpacity style={styles.loadPrefButton} onPress={carregarGenero} activeOpacity={0.8}>
                   <Ionicons name="refresh-circle-outline" size={18} color="#1DB954" style={{ marginRight: 4 }} />
@@ -338,7 +408,6 @@ export default function Home() {
               </View>
             </View>
 
-            {/* Alternador de Modo Compacto */}
             <View style={styles.modeToggleContainer}>
               <Text style={styles.modeToggleText}>
                 {modoCompacto ? 'Modo Compacto Ativo' : 'Modo Completo Ativo'}
@@ -351,7 +420,6 @@ export default function Home() {
               />
             </View>
 
-            {/* Cabeçalho do Feed */}
             <View style={styles.feedHeader}>
               <Text style={styles.feedTitle}>Minhas Avaliações ({avaliacoes.length})</Text>
               <TouchableOpacity style={styles.addReviewButtonSmall} onPress={handleAbrirCriar}>
@@ -363,7 +431,7 @@ export default function Home() {
         }
       />
 
-      {/* Modal Criar / Editar Avaliação */}
+      {/* MODAL ETAPA 1 (BUSCAR ÁLBUM) E ETAPA 2 (AVALIAR / EDITAR) */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -372,92 +440,190 @@ export default function Home() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
+            
+            {/* Cabeçalho do Modal */}
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
-                {editingId ? 'Editar Avaliação' : 'Nova Avaliação'}
+                {editingId 
+                  ? 'Editar Avaliação' 
+                  : (etapaModal === 'busca' ? '1. Buscar Álbum na Web' : '2. Escrever Avaliação')}
               </Text>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
                 <Ionicons name="close" size={24} color="#B3B3B3" />
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.inputLabel}>Nome do Álbum *</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Ex: Dark Side of the Moon"
-              placeholderTextColor="#777"
-              value={nomeAlbum}
-              onChangeText={setNomeAlbum}
-            />
-
-            <Text style={styles.inputLabel}>Nome do Artista *</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Ex: Pink Floyd"
-              placeholderTextColor="#777"
-              value={nomeArtista}
-              onChangeText={setNomeArtista}
-            />
-
-            <Text style={styles.inputLabel}>Sua Nota</Text>
-            <View style={styles.starPickerContainer}>
-              {[1, 2, 3, 4, 5].map((starIndex) => (
-                <TouchableOpacity
-                  key={starIndex}
-                  onPress={() => setNota(starIndex === nota ? 0 : starIndex)}
-                >
-                  <Ionicons
-                    name={starIndex <= nota ? "star" : "star-outline"}
-                    size={30}
-                    color="#FFD700"
-                    style={styles.starIcon}
+            {/* ETAPA 1: BUSCAR E SELECIONAR ÁLBUM */}
+            {etapaModal === 'busca' && !editingId && (
+              <View>
+                <Text style={styles.inputLabel}>Digite o nome do álbum ou artista:</Text>
+                <View style={styles.searchRow}>
+                  <TextInput
+                    style={styles.searchInput}
+                    placeholder="Ex: Nirvana, Nevermind, Gorillaz..."
+                    placeholderTextColor="#777"
+                    value={termoBusca}
+                    onChangeText={setTermoBusca}
+                    onSubmitEditing={executarBuscaAPI}
                   />
+                  <TouchableOpacity 
+                    style={styles.searchSubmitButton} 
+                    onPress={executarBuscaAPI}
+                    disabled={buscandoAPI}
+                  >
+                    {buscandoAPI ? (
+                      <ActivityIndicator color="#000" size="small" />
+                    ) : (
+                      <Ionicons name="search" size={20} color="#000" />
+                    )}
+                  </TouchableOpacity>
+                </View>
+
+                {/* Lista de Resultados de Busca */}
+                <ScrollView style={styles.resultsScrollView} nestedScrollEnabled>
+                  {resultadosBusca.map((item) => (
+                    <TouchableOpacity
+                      key={item.collectionId}
+                      style={styles.resultCard}
+                      onPress={() => selecionarAlbumEAvancar(item)}
+                      activeOpacity={0.7}
+                    >
+                      {item.artworkUrl100 ? (
+                        <Image source={{ uri: item.artworkUrl100 }} style={styles.resultImage} />
+                      ) : (
+                        <View style={styles.resultImagePlaceholder}>
+                          <Ionicons name="disc" size={24} color="#555" />
+                        </View>
+                      )}
+                      <View style={styles.resultInfo}>
+                        <Text style={styles.resultTitle} numberOfLines={1}>{item.collectionName}</Text>
+                        <Text style={styles.resultArtist} numberOfLines={1}>{item.artistName}</Text>
+                        <Text style={styles.resultYear}>
+                          {item.releaseDate ? item.releaseDate.substring(0, 4) : ''}
+                        </Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={20} color="#1DB954" />
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+
+                <TouchableOpacity 
+                  style={styles.manualEntryButton}
+                  onPress={() => {
+                    setNomeAlbum('');
+                    setNomeArtista('');
+                    setDataLancamento('');
+                    setUrlImagem('');
+                    setNota(5);
+                    setReviewText('');
+                    setEtapaModal('formulario');
+                  }}
+                >
+                  <Text style={styles.manualEntryText}>ou preencher dados manualmente ➔</Text>
                 </TouchableOpacity>
-              ))}
-            </View>
+              </View>
+            )}
 
-            <Text style={styles.inputLabel}>Sua Review / Crítica *</Text>
-            <TextInput
-              style={[styles.input, styles.textArea]}
-              placeholder="Escreva a sua opinião sobre o álbum..."
-              placeholderTextColor="#777"
-              value={reviewText}
-              onChangeText={setReviewText}
-              multiline
-              numberOfLines={4}
-            />
+            {/* ETAPA 2: FORMULÁRIO DE AVALIAÇÃO (REVIEW + ESTRELAS) */}
+            {(etapaModal === 'formulario' || editingId) && (
+              <ScrollView style={{ maxHeight: 420 }} nestedScrollEnabled>
+                
+                {/* Resumo do Álbum Selecionado */}
+                {urlImagem ? (
+                  <View style={styles.selectedAlbumHeader}>
+                    <Image source={{ uri: urlImagem }} style={styles.selectedCover} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.selectedTitle}>{nomeAlbum}</Text>
+                      <Text style={styles.selectedArtist}>{nomeArtista} • {dataLancamento}</Text>
+                      {!editingId && (
+                        <TouchableOpacity onPress={() => setEtapaModal('busca')}>
+                          <Text style={styles.changeAlbumText}>Trocar álbum</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
+                ) : null}
 
-            <Text style={styles.inputLabel}>Ano de Lançamento</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Ex: 1973"
-              placeholderTextColor="#777"
-              value={dataLancamento}
-              onChangeText={setDataLancamento}
-            />
+                <Text style={styles.inputLabel}>Sua Nota *</Text>
+                <View style={styles.starPickerContainer}>
+                  {[1, 2, 3, 4, 5].map((starIndex) => (
+                    <TouchableOpacity
+                      key={starIndex}
+                      onPress={() => setNota(starIndex)}
+                    >
+                      <Ionicons
+                        name={starIndex <= nota ? "star" : "star-outline"}
+                        size={32}
+                        color="#FFD700"
+                        style={styles.starIcon}
+                      />
+                    </TouchableOpacity>
+                  ))}
+                </View>
 
-            <Text style={styles.inputLabel}>URL da Imagem da Capa</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="https://link-da-imagem.com/capa.jpg"
-              placeholderTextColor="#777"
-              value={urlImagem}
-              onChangeText={setUrlImagem}
-              autoCapitalize="none"
-              keyboardType="url"
-            />
+                <Text style={styles.inputLabel}>Sua Review / Crítica *</Text>
+                <TextInput
+                  style={[styles.input, styles.textArea]}
+                  placeholder="O que achou das faixas, produção e conceito do álbum?"
+                  placeholderTextColor="#777"
+                  value={reviewText}
+                  onChangeText={setReviewText}
+                  multiline
+                  numberOfLines={4}
+                />
 
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.cancelButton} onPress={() => setModalVisible(false)}>
-                <Text style={styles.cancelButtonText}>Cancelar</Text>
-              </TouchableOpacity>
+                <Text style={styles.inputLabel}>Nome do Álbum</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Ex: Nevermind"
+                  placeholderTextColor="#777"
+                  value={nomeAlbum}
+                  onChangeText={setNomeAlbum}
+                />
 
-              <TouchableOpacity style={styles.saveButton} onPress={handleSalvarAvaliacao}>
-                <Text style={styles.saveButtonText}>
-                  {editingId ? 'Atualizar' : 'Salvar'}
-                </Text>
-              </TouchableOpacity>
-            </View>
+                <Text style={styles.inputLabel}>Nome do Artista</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Ex: Nirvana"
+                  placeholderTextColor="#777"
+                  value={nomeArtista}
+                  onChangeText={setNomeArtista}
+                />
+
+                <Text style={styles.inputLabel}>Ano de Lançamento</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Ex: 1991"
+                  placeholderTextColor="#777"
+                  value={dataLancamento}
+                  onChangeText={setDataLancamento}
+                />
+
+                <Text style={styles.inputLabel}>URL da Imagem da Capa</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="https://link-da-imagem.com/capa.jpg"
+                  placeholderTextColor="#777"
+                  value={urlImagem}
+                  onChangeText={setUrlImagem}
+                  autoCapitalize="none"
+                  keyboardType="url"
+                />
+
+                <View style={styles.modalActions}>
+                  <TouchableOpacity style={styles.cancelButton} onPress={() => setModalVisible(false)}>
+                    <Text style={styles.cancelButtonText}>Cancelar</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={styles.saveButton} onPress={handleSalvarAvaliacao}>
+                    <Text style={styles.saveButtonText}>
+                      {editingId ? 'Atualizar' : 'Salvar Avaliação'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            )}
+
           </View>
         </View>
       </Modal>
@@ -474,8 +640,44 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     zIndex: 10,
   },
-  userHeaderInfo: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  userGreeting: { color: '#FFFFFF', fontWeight: 'bold', fontSize: 14 },
+  userHeaderInfo: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 12 
+  },
+  profileAvatarButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.25)',
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+  },
+  headerAvatarImage: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: '#1DB954',
+  },
+  headerAvatarPlaceholder: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#181818',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#1DB954',
+  },
+  userGreeting: { 
+    color: '#FFFFFF', 
+    fontWeight: 'bold', 
+    fontSize: 14 
+  },
   logoutButton: {
     backgroundColor: 'rgba(231, 76, 60, 0.2)',
     borderWidth: 1,
@@ -519,9 +721,9 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   preferenceTitle: { color: '#1DB954', fontSize: 14, fontWeight: 'bold', marginBottom: 6 },
-  preferenceText: { color: '#B3B3B3', fontSize: 13, marginBottom: 12 },
-  preferenceHighlight: { color: '#FFFFFF', fontWeight: 'bold' },
-  inputPrefLabel: { color: '#B3B3B3', fontSize: 12, marginBottom: 6 },
+  preferenceText: { color: '#FFFFFF', fontSize: 13, marginBottom: 12 },
+  preferenceHighlight: { color: '#1DB954', fontWeight: 'bold' },
+  inputPrefLabel: { color: '#FFFFFF', fontSize: 12, marginBottom: 6 },
   customInputRow: {
     flexDirection: 'row',
     gap: 8,
@@ -639,10 +841,10 @@ const styles = StyleSheet.create({
   },
   modalContainer: {
     width: '100%',
-    maxWidth: 450,
+    maxWidth: 480,
     backgroundColor: '#181818',
     borderRadius: 16,
-    padding: 24,
+    padding: 20,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.1)',
   },
@@ -652,8 +854,120 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
-  modalTitle: { fontSize: 20, fontWeight: 'bold', color: '#FFFFFF' },
-  inputLabel: { color: '#B3B3B3', fontSize: 13, marginBottom: 4, marginTop: 8 },
+  modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#FFFFFF' },
+  searchRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  searchInput: {
+    flex: 1,
+    backgroundColor: '#282828',
+    color: '#FFFFFF',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    borderWidth: 1,
+    borderColor: '#383838',
+  },
+  searchSubmitButton: {
+    backgroundColor: '#1DB954',
+    paddingHorizontal: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  resultsScrollView: {
+    maxHeight: 280,
+    marginVertical: 8,
+  },
+  resultCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#282828',
+    padding: 10,
+    borderRadius: 10,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#383838',
+  },
+  resultImage: {
+    width: 50,
+    height: 50,
+    borderRadius: 6,
+    marginRight: 12,
+  },
+  resultImagePlaceholder: {
+    width: 50,
+    height: 50,
+    borderRadius: 6,
+    backgroundColor: '#181818',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  resultInfo: {
+    flex: 1,
+  },
+  resultTitle: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  resultArtist: {
+    color: '#B3B3B3',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  resultYear: {
+    color: '#1DB954',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  manualEntryButton: {
+    alignItems: 'center',
+    paddingVertical: 12,
+    marginTop: 4,
+  },
+  manualEntryText: {
+    color: '#1DB954',
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
+  selectedAlbumHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#282828',
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 16,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: '#1DB954',
+  },
+  selectedCover: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+  },
+  selectedTitle: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    fontSize: 15,
+  },
+  selectedArtist: {
+    color: '#B3B3B3',
+    fontSize: 13,
+    marginTop: 2,
+  },
+  changeAlbumText: {
+    color: '#1DB954',
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginTop: 6,
+  },
+  inputLabel: { color: '#FFFFFF', fontSize: 13, marginBottom: 4, marginTop: 8, fontWeight: '600' },
   input: {
     backgroundColor: '#282828',
     color: '#FFFFFF',
@@ -665,12 +979,12 @@ const styles = StyleSheet.create({
     borderColor: '#383838',
   },
   textArea: {
-    height: 90,
+    height: 80,
     textAlignVertical: 'top',
   },
-  starPickerContainer: { flexDirection: 'row', alignItems: 'center', marginVertical: 6 },
-  starIcon: { marginRight: 6 },
-  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 22, gap: 12 },
+  starPickerContainer: { flexDirection: 'row', alignItems: 'center', marginVertical: 8, gap: 4 },
+  starIcon: { marginRight: 2 },
+  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 18, gap: 12, marginBottom: 10 },
   cancelButton: { paddingVertical: 10, paddingHorizontal: 18, borderRadius: 20, justifyContent: 'center' },
   cancelButtonText: { color: '#B3B3B3', fontWeight: '600' },
   saveButton: { backgroundColor: '#1DB954', paddingVertical: 10, paddingHorizontal: 22, borderRadius: 20 },

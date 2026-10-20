@@ -1,158 +1,139 @@
 import React, { useState } from 'react';
-import { 
-  StyleSheet, 
-  Text, 
-  View, 
-  TextInput, 
-  TouchableOpacity, 
-  Alert, 
-  Image, 
-  ScrollView 
+import {
+  StyleSheet,
+  Text,
+  View,
+  TextInput,
+  TouchableOpacity,
+  Alert,
+  Image,
+  ActivityIndicator,
+  Platform,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { authService } from '../services/authService';
 
-export default function LoginScreen() {
+export default function Login() {
   const router = useRouter();
 
-  // Controla se o usuário está na aba de 'Login' ou de 'Cadastro'
-  const [isModoCadastro, setIsModoCadastro] = useState(false);
-
-  // States do Formulário
-  const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
+  const [emailError, setEmailError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmeter = async () => {
-    if (!email.trim() || !senha.trim()) {
-      Alert.alert('Erro', 'Por favor, preencha o e-mail e a senha.');
+  const exibirAlerta = (titulo: string, mensagem: string, aoFechar?: () => void) => {
+    if (Platform.OS === 'web') {
+      window.alert(`${titulo}: ${mensagem}`);
+      if (aoFechar) aoFechar();
+    } else {
+      Alert.alert(titulo, mensagem, [{ text: 'OK', onPress: aoFechar }]);
+    }
+  };
+
+  const validarEmail = (textoEmail: string) => {
+    const regexEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return regexEmail.test(textoEmail);
+  };
+
+  const handleLogin = async () => {
+    if (!email.trim() || !validarEmail(email.trim())) {
+      setEmailError('insira um e-mail válido');
+      exibirAlerta('Atenção', 'insira um e-mail válido');
       return;
     }
 
-    if (isModoCadastro) {
-      if (!nome.trim()) {
-        Alert.alert('Erro', 'Por favor, informe o seu nome.');
-        return;
-      }
+    setEmailError('');
 
-      // Cadastrar no banco local
-      const res = await authService.cadastrar({
-        nome: nome.trim(),
-        email: email.trim(),
-        senha: senha.trim(),
-      });
+    if (!senha.trim()) {
+      exibirAlerta('Atenção', 'Por favor, insira a sua senha.');
+      return;
+    }
 
-      if (res.success) {
-        Alert.alert('Sucesso', res.message);
-        router.replace('/' as any);
+    setLoading(true);
+    try {
+      const usuario = await authService.login(email.trim(), senha.trim());
+      if (usuario) {
+        exibirAlerta('Sucesso', `Bem-vindo de volta, ${usuario.nome}!`, () => {
+          if (Platform.OS === 'web') {
+            window.location.href = '/';
+          } else {
+            router.replace('/');
+          }
+        });
       } else {
-        Alert.alert('Atenção', res.message);
+        exibirAlerta('Erro ao entrar', 'E-mail ou senha incorretos.');
       }
-    } else {
-      // Realizar Login
-      const res = await authService.login(email.trim(), senha.trim());
-
-      if (res.success) {
-        Alert.alert('Bem-vindo!', `Olá, ${res.user?.nome || 'usuário'}!`);
-        router.replace('/' as any);
-      } else {
-        Alert.alert('Erro', res.message);
-      }
+    } catch (error) {
+      exibirAlerta('Erro', 'Ocorreu um problema ao tentar realizar o login.');
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <LinearGradient colors={['#1DB954', '#191414', '#000000']} style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        
-        {/* Botão de Voltar para Home */}
-        <TouchableOpacity 
-          style={styles.backButton} 
-          onPress={() => router.back()}
+    <LinearGradient colors={['#1DB954', '#191414']} style={styles.container}>
+      <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+        <Ionicons name="arrow-back" size={24} color="#FFF" />
+      </TouchableOpacity>
+
+      <View style={styles.card}>
+        <Image
+          source={require('../../assets/images/logo.png')}
+          style={styles.logo}
+          resizeMode="contain"
+        />
+        <Text style={styles.title}>Spotikunai</Text>
+        <Text style={styles.subtitle}>Faça login para continuar</Text>
+
+        <Text style={styles.label}>E-mail *</Text>
+        <TextInput
+          style={[styles.input, emailError ? styles.inputError : null]}
+          placeholder="seuemail@exemplo.com"
+          placeholderTextColor="#777"
+          value={email}
+          onChangeText={(texto) => {
+            setEmail(texto);
+            if (emailError && validarEmail(texto.trim())) {
+              setEmailError('');
+            }
+          }}
+          keyboardType="email-address"
+          autoCapitalize="none"
+        />
+        {emailError ? <Text style={styles.errorText}>{emailError}</Text> : null}
+
+        <Text style={styles.label}>Senha *</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="••••••••"
+          placeholderTextColor="#777"
+          value={senha}
+          onChangeText={setSenha}
+          secureTextEntry
+        />
+
+        <TouchableOpacity
+          style={styles.button}
+          onPress={handleLogin}
+          disabled={loading}
           activeOpacity={0.8}
         >
-          <Ionicons name="arrow-back" size={20} color="#FFFFFF" />
-          <Text style={styles.backButtonText}>Voltar</Text>
+          {loading ? (
+            <ActivityIndicator color="#000" />
+          ) : (
+            <Text style={styles.buttonText}>Entrar</Text>
+          )}
         </TouchableOpacity>
 
-        {/* Logo e Título */}
-        <View style={styles.logoContainer}>
-          <Image 
-            source={require('../../assets/images/logo.png')} 
-            style={styles.logoImage} 
-            resizeMode="contain"
-          />
-          <Text style={styles.appTitle}>Spotikunai</Text>
-          <Text style={styles.appSubtitle}>Sua conta na rede social de álbuns</Text>
-        </View>
-
-        {/* Alternador Entrar / Criar Conta */}
-        <View style={styles.tabContainer}>
-          <TouchableOpacity 
-            style={[styles.tabButton, !isModoCadastro && styles.tabActive]}
-            onPress={() => setIsModoCadastro(false)}
-          >
-            <Text style={[styles.tabText, !isModoCadastro && styles.tabTextActive]}>Entrar</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={[styles.tabButton, isModoCadastro && styles.tabActive]}
-            onPress={() => setIsModoCadastro(true)}
-          >
-            <Text style={[styles.tabText, isModoCadastro && styles.tabTextActive]}>Criar Conta</Text>
+        <View style={styles.registerContainer}>
+          <Text style={styles.registerText}>Ainda não tem conta? </Text>
+          <TouchableOpacity onPress={() => router.push('/cadastro' as any)}>
+            <Text style={styles.registerLink}>Cadastre-se</Text>
           </TouchableOpacity>
         </View>
-
-        {/* Formulário */}
-        <View style={styles.formCard}>
-          {isModoCadastro ? (
-            <>
-              <Text style={styles.inputLabel}>Nome Completo *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Ex: Shinobi da Música"
-                placeholderTextColor="#777"
-                value={nome}
-                onChangeText={setNome}
-              />
-            </>
-          ) : null}
-
-          <Text style={styles.inputLabel}>E-mail *</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="seuemail@exemplo.com"
-            placeholderTextColor="#777"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-          />
-
-          <Text style={styles.inputLabel}>Senha *</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="••••••••"
-            placeholderTextColor="#777"
-            value={senha}
-            onChangeText={setSenha}
-            secureTextEntry
-          />
-
-          <TouchableOpacity 
-            style={styles.submitButton} 
-            onPress={handleSubmeter}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.submitButtonText}>
-              {isModoCadastro ? 'Cadastrar e Entrar' : 'Entrar na Conta'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-      </ScrollView>
+      </View>
     </LinearGradient>
   );
 }
@@ -160,112 +141,94 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: 24,
-    paddingTop: 50,
-    paddingBottom: 40,
+    justifyContent: 'center',
     alignItems: 'center',
+    padding: 24,
   },
   backButton: {
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
+    position: 'absolute',
+    top: 40,
+    left: 20,
+    padding: 8,
+    zIndex: 10,
   },
-  backButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-    marginLeft: 6,
-  },
-  logoContainer: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  logoImage: {
-    width: 72,
-    height: 72,
-    marginBottom: 10,
-  },
-  appTitle: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-  appSubtitle: {
-    fontSize: 14,
-    color: '#B3B3B3',
-    marginTop: 4,
-  },
-  tabContainer: {
-    flexDirection: 'row',
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    borderRadius: 24,
-    padding: 4,
+  card: {
     width: '100%',
     maxWidth: 400,
-    marginBottom: 20,
-  },
-  tabButton: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: 'center',
-    borderRadius: 20,
-  },
-  tabActive: {
-    backgroundColor: '#1DB954',
-  },
-  tabText: {
-    color: '#B3B3B3',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  tabTextActive: {
-    color: '#000000',
-    fontWeight: 'bold',
-  },
-  formCard: {
-    width: '100%',
-    maxWidth: 400,
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    backgroundColor: '#181818',
     borderRadius: 16,
-    padding: 20,
+    padding: 24,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.1)',
+    alignItems: 'center',
   },
-  inputLabel: {
+  logo: {
+    width: 60,
+    height: 60,
+    marginBottom: 8,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  subtitle: {
+    fontSize: 14,
+    color: '#B3B3B3',
+    marginBottom: 20,
+  },
+  label: {
+    alignSelf: 'flex-start',
     color: '#B3B3B3',
     fontSize: 13,
-    marginBottom: 6,
-    marginTop: 10,
+    marginBottom: 4,
+    marginTop: 8,
   },
   input: {
+    width: '100%',
     backgroundColor: '#282828',
     color: '#FFFFFF',
     borderRadius: 8,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 10,
     fontSize: 14,
     borderWidth: 1,
     borderColor: '#383838',
   },
-  submitButton: {
-    backgroundColor: '#1DB954',
-    borderRadius: 24,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 24,
+  inputError: {
+    borderColor: '#FF6B6B',
   },
-  submitButtonText: {
+  errorText: {
+    alignSelf: 'flex-start',
+    color: '#FF6B6B',
+    fontSize: 12,
+    marginTop: 4,
+    fontWeight: '600',
+  },
+  button: {
+    width: '100%',
+    backgroundColor: '#1DB954',
+    paddingVertical: 12,
+    borderRadius: 20,
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  buttonText: {
     color: '#000000',
-    fontWeight: 'bold',
     fontSize: 16,
+    fontWeight: 'bold',
+  },
+  registerContainer: {
+    flexDirection: 'row',
+    marginTop: 18,
+  },
+  registerText: {
+    color: '#B3B3B3',
+    fontSize: 13,
+  },
+  registerLink: {
+    color: '#1DB954',
+    fontSize: 13,
+    fontWeight: 'bold',
   },
 });

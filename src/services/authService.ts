@@ -1,78 +1,148 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export interface User {
+  id: string;
   nome: string;
   email: string;
   senha?: string;
+  fotoPerfil?: string;
 }
 
 const USERS_KEY = '@spotikunai_users';
 const CURRENT_USER_KEY = '@spotikunai_current_user';
 
 export const authService = {
-  // Cadastra um novo usuário no banco de dados local
-  async cadastrar(novoUsuario: User): Promise<{ success: boolean; message: string }> {
+  async getUsuarios(): Promise<User[]> {
     try {
-      const usersRaw = await AsyncStorage.getItem(USERS_KEY);
-      const users: User[] = usersRaw ? JSON.parse(usersRaw) : [];
-
-      // Verificar se o e-mail já está cadastrado
-      const userExists = users.some((u) => u.email.toLowerCase() === novoUsuario.email.toLowerCase());
-      if (userExists) {
-        return { success: false, message: 'E-mail já cadastrado na aplicação.' };
-      }
-
-      users.push(novoUsuario);
-      await AsyncStorage.setItem(USERS_KEY, JSON.stringify(users));
-      
-      // Define como usuário logado automaticamente ao cadastrar
-      await AsyncStorage.setItem(CURRENT_USER_KEY, JSON.stringify(novoUsuario));
-
-      return { success: true, message: 'Conta criada com sucesso!' };
+      const raw = await AsyncStorage.getItem(USERS_KEY);
+      return raw ? JSON.parse(raw) : [];
     } catch (error) {
-      return { success: false, message: 'Erro ao salvar dados do usuário.' };
+      console.error('Erro ao buscar usuários:', error);
+      return [];
     }
   },
 
-  // Realiza a verificação de Login
-  async login(email: string, senha: string): Promise<{ success: boolean; message: string; user?: User }> {
+  async cadastrar(nome: string, email: string, senha: string): Promise<boolean> {
     try {
-      const usersRaw = await AsyncStorage.getItem(USERS_KEY);
-      const users: User[] = usersRaw ? JSON.parse(usersRaw) : [];
-
-      const user = users.find(
-        (u) => u.email.toLowerCase() === email.toLowerCase() && u.senha === senha
+      const usuarios = await this.getUsuarios();
+      const emailTratado = email.trim().toLowerCase();
+      
+      const emailExiste = usuarios.some(
+        (u) => u.email.trim().toLowerCase() === emailTratado
       );
 
-      if (!user) {
-        return { success: false, message: 'E-mail ou senha incorretos.' };
+      if (emailExiste) {
+        return false;
       }
 
-      // Salva a sessão ativa
-      await AsyncStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
+      const novoUsuario: User = {
+        id: Date.now().toString(),
+        nome: nome.trim(),
+        email: emailTratado,
+        senha: senha.trim(),
+        fotoPerfil: '',
+      };
 
-      return { success: true, message: 'Login realizado!', user };
+      usuarios.push(novoUsuario);
+      await AsyncStorage.setItem(USERS_KEY, JSON.stringify(usuarios));
+      await AsyncStorage.setItem(CURRENT_USER_KEY, JSON.stringify(novoUsuario));
+      return true;
     } catch (error) {
-      return { success: false, message: 'Erro ao realizar login.' };
+      console.error('Erro ao cadastrar:', error);
+      return false;
     }
   },
 
-  // Busca o usuário que está atualmente logado
-  async getUsuarioAtual(): Promise<User | null> {
+  async login(email: string, senha: string): Promise<User | null> {
     try {
-      const userRaw = await AsyncStorage.getItem(CURRENT_USER_KEY);
-      return userRaw ? JSON.parse(userRaw) : null;
+      const usuarios = await this.getUsuarios();
+      const emailTratado = email.trim().toLowerCase();
+      const senhaTratada = senha.trim();
+
+      const usuario = usuarios.find(
+        (u) => u.email.trim().toLowerCase() === emailTratado && u.senha === senhaTratada
+      );
+
+      if (usuario) {
+        await AsyncStorage.setItem(CURRENT_USER_KEY, JSON.stringify(usuario));
+        return usuario;
+      }
+      return null;
     } catch (error) {
+      console.error('Erro ao fazer login:', error);
       return null;
     }
   },
 
-  // Encerra a sessão do usuário (Logout)
   async logout(): Promise<void> {
     try {
       await AsyncStorage.removeItem(CURRENT_USER_KEY);
     } catch (error) {
-      console.error('Erro ao fazer logout', error);
+      console.error('Erro no logout:', error);
     }
-  }
+  },
+
+  async getUsuarioAtual(): Promise<User | null> {
+    try {
+      const raw = await AsyncStorage.getItem(CURRENT_USER_KEY);
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch (error) {
+      console.error('Erro ao obter usuário atual:', error);
+      return null;
+    }
+  },
+
+  async atualizarPerfil(
+    userId: string,
+    novoNome: string,
+    novoEmail: string,
+    senhaAtual?: string,
+    novaSenha?: string,
+    fotoPerfil?: string
+  ): Promise<{ sucesso: boolean; mensagem: string }> {
+    try {
+      const usuarios = await this.getUsuarios();
+      const usuarioIndex = usuarios.findIndex((u) => u.id === userId);
+
+      if (usuarioIndex === -1) {
+        return { sucesso: false, mensagem: 'Usuário não encontrado.' };
+      }
+
+      const usuario = usuarios[usuarioIndex];
+      const emailTratado = novoEmail.trim().toLowerCase();
+
+      const emailEmUso = usuarios.some(
+        (u) => u.id !== userId && u.email.trim().toLowerCase() === emailTratado
+      );
+
+      if (emailEmUso) {
+        return { sucesso: false, mensagem: 'Este e-mail já está em uso por outra conta.' };
+      }
+
+      if (novaSenha && novaSenha.trim().length > 0) {
+        if (!senhaAtual || usuario.senha !== senhaAtual.trim()) {
+          return { sucesso: false, mensagem: 'A senha atual está incorreta.' };
+        }
+        if (novaSenha.trim().length < 4) {
+          return { sucesso: false, mensagem: 'A nova senha deve ter no mínimo 4 caracteres.' };
+        }
+        usuario.senha = novaSenha.trim();
+      }
+
+      usuario.nome = novoNome.trim();
+      usuario.email = emailTratado;
+      usuario.fotoPerfil = fotoPerfil ? fotoPerfil.trim() : '';
+
+      usuarios[usuarioIndex] = usuario;
+
+      await AsyncStorage.setItem(USERS_KEY, JSON.stringify(usuarios));
+      await AsyncStorage.setItem(CURRENT_USER_KEY, JSON.stringify(usuario));
+
+      return { sucesso: true, mensagem: 'Perfil atualizado com sucesso!' };
+    } catch (error) {
+      console.error('Erro ao atualizar perfil:', error);
+      return { sucesso: false, mensagem: 'Erro interno ao atualizar os dados.' };
+    }
+  },
 };
