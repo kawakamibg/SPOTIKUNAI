@@ -1,16 +1,18 @@
 import React from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
+import { StyleSheet, Text, View, Image, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-export interface AlbumCardProps {
+interface AlbumCardProps {
   id: string;
   nomeAlbum: string;
   nomeArtista: string;
-  dataLancamento?: string;
+  dataLancamento: string;
   urlImagem?: string;
   nota: number;
   modoCompacto?: boolean;
-  onPress?: () => void;
+  onPress: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
 }
 
 export default function AlbumCard({
@@ -21,152 +23,140 @@ export default function AlbumCard({
   nota,
   modoCompacto = false,
   onPress,
+  onEdit,
+  onDelete,
 }: AlbumCardProps) {
-  // Renderização em Modo Compacto
-  if (modoCompacto) {
-    return (
-      <TouchableOpacity 
-        style={styles.cardCompact} 
-        onPress={onPress} 
-        activeOpacity={0.7}
-      >
-        <Ionicons name="disc" size={20} color="#1DB954" style={{ marginRight: 8 }} />
-        <View style={{ flex: 1 }}>
-          <Text style={styles.albumTitleCompact} numberOfLines={1}>{nomeAlbum}</Text>
-          <Text style={styles.artistNameCompact} numberOfLines={1}>{nomeArtista}</Text>
-        </View>
-        <View style={styles.starsRow}>
-          <Ionicons name="star" size={14} color="#FFD700" />
-          <Text style={styles.ratingTextCompact}>{nota}</Text>
-        </View>
-      </TouchableOpacity>
-    );
-  }
+  const renderEstrelas = (qtd: number) => {
+    const estrelas = [];
+    for (let i = 1; i <= 5; i++) {
+      estrelas.push(
+        <Ionicons
+          key={i}
+          name={i <= qtd ? 'star' : 'star-outline'}
+          size={modoCompacto ? 14 : 18}
+          color="#FFD700"
+        />
+      );
+    }
+    return estrelas;
+  };
 
-  // Renderização Normal / Completa
   return (
     <TouchableOpacity 
-      style={styles.cardLetterboxd} 
-      onPress={onPress} 
+      style={[styles.card, modoCompacto && styles.cardCompacto]} 
+      onPress={onPress}
       activeOpacity={0.8}
     >
-      {urlImagem ? (
-        <Image 
-          source={{ uri: urlImagem }} 
-          style={styles.albumCover} 
-          resizeMode="cover"
-        />
-      ) : (
-        <View style={[styles.albumCover, styles.albumCoverPlaceholder]}>
-          <Ionicons name="disc" size={36} color="#1DB954" />
-        </View>
-      )}
+      <Image
+        source={
+          urlImagem && urlImagem.trim() !== ''
+            ? { uri: urlImagem }
+            : { uri: 'https://via.placeholder.com/150/1DB954/FFFFFF?text=Spotikunai' }
+        }
+        style={[styles.capa, modoCompacto && styles.capaCompacta]}
+        resizeMode="cover"
+      />
 
-      <View style={styles.cardInfo}>
-        <Text style={styles.albumTitle} numberOfLines={1}>
+      <View style={styles.infoContainer}>
+        <Text style={[styles.titulo, modoCompacto && styles.tituloCompacto]} numberOfLines={1}>
           {nomeAlbum}
         </Text>
-        <Text style={styles.artistName} numberOfLines={1}>
-          {nomeArtista}
+        <Text style={styles.artista} numberOfLines={1}>
+          {nomeArtista} • <Text style={styles.ano}>{dataLancamento}</Text>
         </Text>
-        
-        <View style={styles.starsRow}>
-          {[1, 2, 3, 4, 5].map((starIndex) => (
-            <Ionicons
-              key={starIndex}
-              name={starIndex <= nota ? "star" : "star-outline"}
-              size={16}
-              color="#FFD700"
-              style={{ marginRight: 2 }}
-            />
-          ))}
-        </View>
 
-        {dataLancamento ? (
-          <Text style={styles.releaseDate}>
-            Lançamento: {dataLancamento}
-          </Text>
-        ) : null}
+        <View style={styles.avaliacaoContainer}>
+          {renderEstrelas(nota)}
+        </View>
+      </View>
+
+      {/* Ações: Editar e Excluir */}
+      <View style={styles.actionsContainer}>
+        {onEdit && (
+          <TouchableOpacity 
+            style={styles.actionButton} 
+            onPress={onEdit}
+          >
+            <Ionicons name="pencil" size={18} color="#1DB954" />
+          </TouchableOpacity>
+        )}
+
+        {onDelete && (
+          <TouchableOpacity 
+            style={styles.actionButton} 
+            onPress={onDelete}
+          >
+            <Ionicons name="trash-outline" size={18} color="#FF6B6B" />
+          </TouchableOpacity>
+        )}
       </View>
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
-  cardLetterboxd: {
-    width: '100%',
-    maxWidth: 500,
+  card: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    backgroundColor: '#181818',
     borderRadius: 12,
     padding: 12,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    marginBottom: 12,
     alignItems: 'center',
-  },
-  albumCover: {
-    width: 80,
-    height: 80,
-    borderRadius: 8,
-    marginRight: 14,
-  },
-  albumCoverPlaceholder: {
-    backgroundColor: '#282828',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  cardInfo: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  albumTitle: {
-    color: '#FFFFFF',
-    fontSize: 17,
-    fontWeight: 'bold',
-    marginBottom: 2,
-  },
-  artistName: {
-    color: '#1DB954',
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  starsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  releaseDate: {
-    color: '#B3B3B3',
-    fontSize: 12,
-  },
-  cardCompact: {
     width: '100%',
     maxWidth: 500,
-    flexDirection: 'row',
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 8,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.08)',
-    alignItems: 'center',
   },
-  albumTitleCompact: {
+  cardCompacto: {
+    padding: 8,
+    marginBottom: 8,
+  },
+  capa: {
+    width: 70,
+    height: 70,
+    borderRadius: 8,
+    backgroundColor: '#282828',
+  },
+  capaCompacta: {
+    width: 48,
+    height: 48,
+    borderRadius: 6,
+  },
+  infoContainer: {
+    flex: 1,
+    marginLeft: 12,
+    justifyContent: 'center',
+  },
+  titulo: {
     color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  tituloCompacto: {
     fontSize: 14,
-    fontWeight: 'bold',
   },
-  artistNameCompact: {
-    color: '#1DB954',
-    fontSize: 12,
-  },
-  ratingTextCompact: {
-    color: '#FFD700',
+  artista: {
+    color: '#B3B3B3',
     fontSize: 13,
-    fontWeight: 'bold',
-    marginLeft: 4,
+    marginTop: 2,
+  },
+  ano: {
+    color: '#777',
+  },
+  avaliacaoContainer: {
+    flexDirection: 'row',
+    marginTop: 6,
+    gap: 2,
+  },
+  actionsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginLeft: 8,
+  },
+  actionButton: {
+    padding: 6,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
   },
 });
