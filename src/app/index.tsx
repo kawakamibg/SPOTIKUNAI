@@ -25,16 +25,9 @@ import AlbumCard from '../components/AlbumCard';
 import { Album } from '../data/albuns';
 import { authService, User } from '../services/authService';
 import { apiService } from '../services/apiService';
+import { spotifyService, SpotifyAlbum } from '../services/spotifyService';
 
 const ALBUNS_STORAGE_KEY = '@spotikunai_albuns';
-
-interface ITunesAlbum {
-  collectionId: number;
-  collectionName: string;
-  artistName: string;
-  releaseDate?: string;
-  artworkUrl100?: string;
-}
 
 export default function Home() {
   const router = useRouter();
@@ -50,7 +43,7 @@ export default function Home() {
   const [modalVisible, setModalVisible] = useState(false);
   const [etapaModal, setEtapaModal] = useState<'busca' | 'formulario'>('busca');
   const [termoBusca, setTermoBusca] = useState('');
-  const [resultadosBusca, setResultadosBusca] = useState<ITunesAlbum[]>([]);
+  const [resultadosBusca, setResultadosBusca] = useState<SpotifyAlbum[]>([]);
   const [buscandoAPI, setBuscandoAPI] = useState(false);
 
   // Campos da Avaliação
@@ -105,7 +98,7 @@ export default function Home() {
     }
   }
 
-  // Busca lista de álbuns na API pública (iTunes API)
+  // Busca álbuns via Spotify (proxy pelo servidor Express local)
   const executarBuscaAPI = async () => {
     if (!termoBusca.trim()) {
       Alert.alert('Atenção', 'Digite o nome do álbum ou artista para pesquisar.');
@@ -116,35 +109,26 @@ export default function Home() {
     setResultadosBusca([]);
 
     try {
-      const query = encodeURIComponent(termoBusca.trim());
-      const response = await fetch(`https://itunes.apple.com/search?term=${query}&entity=album&limit=6`);
-      const data = await response.json();
-
-      if (data.results && data.results.length > 0) {
-        setResultadosBusca(data.results);
+      const resultados = await spotifyService.buscarAlbuns(termoBusca.trim(), 8);
+      if (resultados.length > 0) {
+        setResultadosBusca(resultados);
       } else {
         Alert.alert('Nenhum resultado', 'Nenhum álbum foi encontrado com esse termo.');
       }
     } catch (error) {
-      console.error('Erro ao buscar na API:', error);
-      Alert.alert('Erro', 'Não foi possível conectar ao serviço de busca de álbuns.');
+      console.error('Erro ao buscar no Spotify:', error);
+      Alert.alert('Erro', 'Não foi possível conectar ao serviço de busca. Verifique se a API local está rodando.');
     } finally {
       setBuscandoAPI(false);
     }
   };
 
-  // Ao clicar em um álbum da lista encontrada
-  const selecionarAlbumEAvancar = (item: ITunesAlbum) => {
-    setNomeAlbum(item.collectionName || '');
-    setNomeArtista(item.artistName || '');
-    setDataLancamento(item.releaseDate ? item.releaseDate.substring(0, 4) : '2024');
-    
-    if (item.artworkUrl100) {
-      setUrlImagem(item.artworkUrl100.replace('100x100bb', '600x600bb'));
-    } else {
-      setUrlImagem('');
-    }
-
+  // Ao clicar em um álbum da lista encontrada (Spotify)
+  const selecionarAlbumEAvancar = (item: SpotifyAlbum) => {
+    setNomeAlbum(item.nomeAlbum || '');
+    setNomeArtista(item.nomeArtista || '');
+    setDataLancamento(item.ano || '2024');
+    setUrlImagem(item.urlImagem || '');
     setNota(5);
     setReviewText('');
     setEtapaModal('formulario');
@@ -483,24 +467,22 @@ export default function Home() {
                 <ScrollView style={styles.resultsScrollView} nestedScrollEnabled>
                   {resultadosBusca.map((item) => (
                     <TouchableOpacity
-                      key={item.collectionId}
+                      key={item.id}
                       style={styles.resultCard}
                       onPress={() => selecionarAlbumEAvancar(item)}
                       activeOpacity={0.7}
                     >
-                      {item.artworkUrl100 ? (
-                        <Image source={{ uri: item.artworkUrl100 }} style={styles.resultImage} />
+                      {item.urlImagem ? (
+                        <Image source={{ uri: item.urlImagem }} style={styles.resultImage} />
                       ) : (
                         <View style={styles.resultImagePlaceholder}>
                           <Ionicons name="disc" size={24} color="#555" />
                         </View>
                       )}
                       <View style={styles.resultInfo}>
-                        <Text style={styles.resultTitle} numberOfLines={1}>{item.collectionName}</Text>
-                        <Text style={styles.resultArtist} numberOfLines={1}>{item.artistName}</Text>
-                        <Text style={styles.resultYear}>
-                          {item.releaseDate ? item.releaseDate.substring(0, 4) : ''}
-                        </Text>
+                        <Text style={styles.resultTitle} numberOfLines={1}>{item.nomeAlbum}</Text>
+                        <Text style={styles.resultArtist} numberOfLines={1}>{item.nomeArtista}</Text>
+                        <Text style={styles.resultYear}>{item.ano}</Text>
                       </View>
                       <Ionicons name="chevron-forward" size={20} color="#1DB954" />
                     </TouchableOpacity>

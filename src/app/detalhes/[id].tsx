@@ -1,18 +1,47 @@
-import React from 'react';
-import { StyleSheet, Text, View, Image, TouchableOpacity, ScrollView } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { StyleSheet, Text, View, Image, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { ALBUNS_INICIAIS } from '../../data/albuns';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Album } from '../../data/albuns';
+
+const ALBUNS_STORAGE_KEY = '@spotikunai_albuns';
 
 export default function DetalhesScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
 
-  // Busca o álbum selecionado na memória compartilhada
-  const album = ALBUNS_INICIAIS.find((item) => item.id === id);
+  const [album, setAlbum] = useState<Album | null | undefined>(undefined);
 
-  if (!album) {
+  useEffect(() => {
+    async function carregarAlbum() {
+      try {
+        const raw = await AsyncStorage.getItem(ALBUNS_STORAGE_KEY);
+        if (raw) {
+          const lista: Album[] = JSON.parse(raw);
+          const encontrado = lista.find((item) => item.id === id);
+          setAlbum(encontrado ?? null);
+        } else {
+          setAlbum(null);
+        }
+      } catch {
+        setAlbum(null);
+      }
+    }
+    carregarAlbum();
+  }, [id]);
+
+  // Carregando
+  if (album === undefined) {
+    return (
+      <LinearGradient colors={['#1DB954', '#191414']} style={styles.containerNotFound}>
+        <ActivityIndicator size="large" color="#1DB954" />
+      </LinearGradient>
+    );
+  }
+
+  if (album === null) {
     return (
       <LinearGradient colors={['#1DB954', '#191414']} style={styles.containerNotFound}>
         <Ionicons name="alert-circle-outline" size={64} color="#E74C3C" />
