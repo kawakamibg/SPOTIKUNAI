@@ -26,8 +26,11 @@ import { Album } from '../data/albuns';
 import { authService, User } from '../services/authService';
 import { apiService } from '../services/apiService';
 import { spotifyService, SpotifyAlbum } from '../services/spotifyService';
-
-const ALBUNS_STORAGE_KEY = '@spotikunai_albuns';
+import {
+  carregarAlbuns as carregarAlbunsSalvos,
+  carregarIdsFavoritos,
+  salvarIdsFavoritos,
+} from '../services/albumStorage';
 
 export default function Home() {
   const router = useRouter();
@@ -36,6 +39,7 @@ export default function Home() {
   const [genero, setGenero] = useState<string>('Nenhuma preferência salva');
   const [inputGeneroCustom, setInputGeneroCustom] = useState<string>('');
   const [avaliacoes, setAvaliacoes] = useState<Album[]>([]); 
+  const [favoritos, setFavoritos] = useState<string[]>([]);
 
   const [modoCompacto, setModoCompacto] = useState(false);
 
@@ -60,6 +64,7 @@ export default function Home() {
       carregarUsuario();
       carregarGenero();
       carregarAlbuns();
+      carregarFavoritos();
     }, [])
   );
 
@@ -70,34 +75,33 @@ export default function Home() {
 
   async function carregarAlbuns() {
     try {
-      const albunsAPI = await apiService.getAlbuns();
-      
-      if (albunsAPI && albunsAPI.length > 0) {
-        const formatados: Album[] = albunsAPI.map((item: any) => ({
-          id: String(item.id),
-          nomeAlbum: item.nomeAlbum || 'Sem título',
-          nomeArtista: item.nomeArtista || 'Artista desconhecido',
-          dataLancamento: String(item.ano || '2024'),
-          urlImagem: item.urlImagem || '',
-          nota: item.nota || 5,
-          genero: item.genero || 'Gênero não informado',
-          descricao: item.descricao || 'Álbum vindo do servidor Express.',
-        }));
-
-        setAvaliacoes(formatados);
-        await AsyncStorage.setItem(ALBUNS_STORAGE_KEY, JSON.stringify(formatados));
-        return;
-      }
-
-      const albunsSalvosRaw = await AsyncStorage.getItem(ALBUNS_STORAGE_KEY);
-      if (albunsSalvosRaw !== null) {
-        setAvaliacoes(JSON.parse(albunsSalvosRaw));
-      }
+      setAvaliacoes(await carregarAlbunsSalvos());
     } catch (erro) {
       console.error('Erro ao carregar álbuns:', erro);
     }
   }
 
+  async function carregarFavoritos() {
+    try {
+      setFavoritos(await carregarIdsFavoritos());
+    } catch (erro) {
+      console.error('Erro ao carregar favoritos:', erro);
+    }
+  }
+
+  async function alternarFavorito(id: string) {
+    const novosFavoritos = favoritos.includes(id)
+      ? favoritos.filter((favoritoId) => favoritoId !== id)
+      : [...favoritos, id];
+
+    try {
+      await salvarIdsFavoritos(novosFavoritos);
+      setFavoritos(novosFavoritos);
+    } catch (erro) {
+      console.error('Erro ao atualizar favoritos:', erro);
+      Alert.alert('Erro', 'Não foi possível salvar a alteração nos favoritos.');
+    }
+  }
   // Busca álbuns via Spotify (proxy pelo servidor Express local)
   const executarBuscaAPI = async () => {
     if (!termoBusca.trim()) {
@@ -315,6 +319,8 @@ export default function Home() {
             modoCompacto={modoCompacto}
             onPress={() => router.push(`/detalhes/${item.id}` as any)}
             onEdit={() => handleAbrirEditar(item)}
+            onFavorite={() => alternarFavorito(item.id)}
+            isFavorite={favoritos.includes(item.id)}
             onDelete={() => handleDeletar(item.id, item.nomeAlbum)}
           />
         )}
@@ -406,10 +412,21 @@ export default function Home() {
 
             <View style={styles.feedHeader}>
               <Text style={styles.feedTitle}>Minhas Avaliações ({avaliacoes.length})</Text>
-              <TouchableOpacity style={styles.addReviewButtonSmall} onPress={handleAbrirCriar}>
-                <Ionicons name="add" size={18} color="#000" />
-                <Text style={styles.addReviewButtonSmallText}>Nova</Text>
-              </TouchableOpacity>
+              <View style={styles.feedActions}>
+                <TouchableOpacity
+                  style={styles.favoritesButton}
+                  onPress={() => router.push('/favoritos' as any)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Abrir favoritos"
+                >
+                  <Ionicons name="heart" size={18} color="#FF6B6B" />
+                  <Text style={styles.favoritesButtonText}>Favoritos ({favoritos.length})</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.addReviewButtonSmall} onPress={handleAbrirCriar}>
+                  <Ionicons name="add" size={18} color="#000" />
+                  <Text style={styles.addReviewButtonSmallText}>Nova</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         }
@@ -788,6 +805,21 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   feedTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: 'bold' },
+  feedActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  favoritesButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#181818',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 16,
+  },
+  favoritesButtonText: { color: '#FFFFFF', fontWeight: 'bold', fontSize: 12 },
   addReviewButtonSmall: {
     flexDirection: 'row',
     alignItems: 'center',

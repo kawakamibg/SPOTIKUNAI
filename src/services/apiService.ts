@@ -13,6 +13,7 @@ export interface AlbumAPI {
   urlImagem?: string;
   nota?: number;
   descricao?: string;
+  genero?: string;
 }
 
 export const apiService = {

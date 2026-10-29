@@ -12,6 +12,8 @@ interface AlbumCardProps {
   modoCompacto?: boolean;
   onPress: () => void;
   onEdit?: () => void;
+  onFavorite?: () => void;
+  isFavorite?: boolean;
   onDelete?: () => void;
 }
 
@@ -24,6 +26,8 @@ export default function AlbumCard({
   modoCompacto = false,
   onPress,
   onEdit,
+  onFavorite,
+  isFavorite = false,
   onDelete,
 }: AlbumCardProps) {
   const renderEstrelas = (qtd: number) => {
@@ -78,6 +82,21 @@ export default function AlbumCard({
             onPress={onEdit}
           >
             <Ionicons name="pencil" size={18} color="#1DB954" />
+          </TouchableOpacity>
+        )}
+
+        {onFavorite && (
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={onFavorite}
+            accessibilityRole="button"
+            accessibilityLabel={isFavorite ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
+          >
+            <Ionicons
+              name={isFavorite ? 'heart' : 'heart-outline'}
+              size={18}
+              color={isFavorite ? '#FF6B6B' : '#B3B3B3'}
+            />
           </TouchableOpacity>
         )}
 
