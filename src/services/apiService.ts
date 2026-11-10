@@ -1,9 +1,33 @@
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 
-// Na Web utiliza localhost; em dispositivos móveis/emuladores utiliza o IP local da máquina
-const API_URL = Platform.OS === 'web' 
-  ? 'http://localhost:3000/albuns' 
-  : 'http://192.168.1.100:3000/albuns'; // Substitui pelo teu IP local se fores testar no telemóvel
+function resolveApiBaseUrl(): string {
+  if (Platform.OS === 'web') {
+    return 'http://localhost:3000';
+  }
+
+  const hostUri =
+    Constants.expoConfig?.hostUri ??
+    (Constants as any)?.manifest2?.extra?.expoGo?.hostUri ??
+    (Constants as any)?.expoGo?.hostUri ??
+    '';
+
+  if (hostUri) {
+    const host = hostUri.split(':')[0];
+    if (host && host !== 'localhost') {
+      return `http://${host}:3000`;
+    }
+  }
+
+  if (Platform.OS === 'android') {
+    return 'http://10.0.2.2:3000';
+  }
+
+  return 'http://localhost:3000';
+}
+
+const API_BASE = resolveApiBaseUrl();
+const API_URL = `${API_BASE}/albuns`;
 
 export interface AlbumAPI {
   id?: number | string;
@@ -46,14 +70,22 @@ export const apiService = {
   },
 
   // PUT: Atualizar álbum existente na API
-  async atualizarAlbum(id: string | number, album: AlbumAPI): Promise<AlbumAPI | null> {
+  async atualizarAlbum(id: string | number, album: any) {
     try {
       const response = await fetch(`${API_URL}/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify(album),
       });
-      if (!response.ok) throw new Error('Erro ao atualizar álbum');
+
+      if (!response.ok) {
+        const errorDetail = await response.text();
+        console.error(`Status HTTP ${response.status}:`, errorDetail);
+        throw new Error(`Erro ao atualizar álbum (${response.status})`);
+      }
+
       return await response.json();
     } catch (error) {
       console.error('Erro na API atualizarAlbum:', error);

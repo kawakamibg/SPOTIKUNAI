@@ -196,15 +196,18 @@ export default function Home() {
     setModalVisible(true);
   };
 
-  const handleAbrirEditar = (item: Album) => {
-    setEditingId(item.id);
-    setNomeAlbum(item.nomeAlbum);
-    setNomeArtista(item.nomeArtista);
-    setDataLancamento(item.dataLancamento);
-    setUrlImagem(item.urlImagem || '');
-    setNota(item.nota);
-    setReviewText(item.descricao || '');
-    setEtapaModal('formulario');
+  const handleAbrirEditar = (item: any) => {
+  setEditingId(item.id);
+  setNomeAlbum(item.nomeAlbum);
+  setNomeArtista(item.nomeArtista);
+  
+  // Garante que lê 'ano' do banco ou 'dataLancamento' se existir
+  setDataLancamento(String(item.ano || item.dataLancamento || '2024'));
+  
+  setUrlImagem(item.urlImagem || '');
+  setNota(item.nota);
+  setReviewText(item.descricao || '');
+  setEtapaModal('formulario');
     setModalVisible(true);
   };
 
@@ -230,34 +233,30 @@ export default function Home() {
   };
 
   const handleSalvarAvaliacao = async () => {
-    if (!nomeAlbum.trim() || !nomeArtista.trim()) {
-      Alert.alert("Atenção", "Por favor, preencha pelo menos o nome do álbum e do artista.");
-      return;
-    }
+  if (!nomeAlbum.trim() || !nomeArtista.trim()) {
+    Alert.alert("Atenção", "Por favor, preencha pelo menos o nome do álbum e do artista.");
+    return;
+  }
 
-    if (editingId) {
-      await apiService.atualizarAlbum(editingId, {
-        nomeAlbum: nomeAlbum.trim(),
-        nomeArtista: nomeArtista.trim(),
-        ano: dataLancamento.trim() || '2024',
-        urlImagem: urlImagem.trim(),
-        nota: nota,
-        descricao: reviewText.trim() || 'Sem review escrita.',
-      });
-    } else {
-      await apiService.criarAlbum({
-        nomeAlbum: nomeAlbum.trim(),
-        nomeArtista: nomeArtista.trim(),
-        ano: dataLancamento.trim() || '2024',
-        urlImagem: urlImagem.trim(),
-        nota: nota,
-        descricao: reviewText.trim() || 'Sem review escrita.',
-      });
-    }
-
-    await carregarAlbuns();
-    setModalVisible(false);
+  // Payload seguro com conversão tratada para ambos os casos (criar e atualizar)
+  const payload = {
+    nomeAlbum: nomeAlbum.trim(),
+    nomeArtista: nomeArtista.trim(),
+    ano: String(dataLancamento || '').trim() || '2024',
+    urlImagem: urlImagem.trim(),
+    nota: nota,
+    descricao: reviewText.trim() || 'Sem review escrita.',
   };
+
+  if (editingId) {
+    await apiService.atualizarAlbum(editingId, payload);
+  } else {
+    await apiService.criarAlbum(payload);
+  }
+
+  await carregarAlbuns();
+  setModalVisible(false);
+};
 
   return (
     <LinearGradient colors={['#1DB954', '#191414']} style={styles.container}>

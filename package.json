@@ -40,6 +40,7 @@
   },
   "scripts": {
     "start": "expo start",
+    "dev": "node ./scripts/dev.js",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo start --android",
     "ios": "expo start --ios",

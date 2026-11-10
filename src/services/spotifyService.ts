@@ -1,61 +1,39 @@
 import { Platform } from 'react-native';
 
-// O frontend chama NOSSO servidor Express, que por sua vez chama o Spotify.
-// As credenciais ficam apenas no servidor — nunca no cliente.
-const API_BASE = Platform.OS === 'web'
-  ? 'http://localhost:3000'
-  : 'http://192.168.1.100:3000'; // Troque pelo IP local ao testar no celular
-
-export interface SpotifyAlbum {
-  id: string;
-  nomeAlbum: string;
-  nomeArtista: string;
-  ano: string;
-  urlImagem: string;
-  totalFaixas?: number;
-  tipo?: string;
-}
-
-export interface SpotifyAlbumDetalhes extends SpotifyAlbum {
-  generos?: string[];
-  label?: string;
-  popularidade?: number;
-}
+const API_BASE = Platform.OS === 'web' 
+  ? 'http://localhost:3000' 
+  : 'http://192.168.1.100:3000';
 
 export const spotifyService = {
-  /**
-   * Busca álbuns pelo nome/artista via proxy do servidor Express.
-   */
-  async buscarAlbuns(query: string, limite = 8): Promise<SpotifyAlbum[]> {
+  async buscarAlbuns(termo: string) {
+    if (!termo || !termo.trim()) return [];
+
     try {
-      const params = new URLSearchParams({ q: query, limit: String(limite) });
-      const response = await fetch(`${API_BASE}/spotify/search?${params}`);
+      const query = encodeURIComponent(termo.trim());
+      const response = await fetch(`${API_BASE}/spotify/search?q=${query}`);
 
       if (!response.ok) {
-        const erro = await response.json().catch(() => ({}));
-        throw new Error(erro.erro || `Erro HTTP ${response.status}`);
+        console.warn(`Erro na resposta da API: ${response.status}`);
+        return [];
       }
 
       const data = await response.json();
-      return data.albums ?? [];
-    } catch (error) {
-      console.error('Erro spotifyService.buscarAlbuns:', error);
-      throw error;
-    }
-  },
 
-  /**
-   * Busca detalhes completos de um álbum pelo ID do Spotify.
-   */
-  async buscarDetalhes(spotifyId: string): Promise<SpotifyAlbumDetalhes | null> {
-    try {
-      const response = await fetch(`${API_BASE}/spotify/album/${spotifyId}`);
-      if (!response.ok) return null;
-      return await response.json();
+      // Se for uma lista direta [ ... ]
+      if (Array.isArray(data)) {
+        return data;
+      }
+
+      // Se for um objeto com a chave albums { albums: [ ... ] }
+      if (data && data.albums) {
+        if (Array.isArray(data.albums)) return data.albums;
+        if (Array.isArray(data.albums.items)) return data.albums.items;
+      }
+
+      return [];
     } catch (error) {
-      console.error('Erro spotifyService.buscarDetalhes:', error);
-      return null;
+      console.error('Erro em spotifyService.buscarAlbuns:', error);
+      return [];
     }
-  },
+  }
 };
-

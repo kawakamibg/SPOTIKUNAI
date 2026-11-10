@@ -1,217 +1,245 @@
-require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const axios = require('axios');
+const conectarBanco = require('./db');
+
+try {
+  require('dotenv').config();
+} catch (e) {
+  // Ignora se o ficheiro .env não existir
+}
 
 const app = express();
-app.use(express.json());
+
+// Middlewares
 app.use(cors());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
-// ─────────────────────────────────────────────
-//  BANCO DE DADOS LOCAL (Álbuns avaliados)
-// ─────────────────────────────────────────────
+let db;
 
-let albuns = [
-  {
-    id: 1,
-    nomeAlbum: "Dark Side of the Moon",
-    nomeArtista: "Pink Floyd",
-    ano: 1973,
-    urlImagem: "https://upload.wikimedia.org/wikipedia/en/3/3b/Dark_Side_of_the_Moon.png"
-  },
-  {
-    id: 2,
-    nomeAlbum: "Nevermind",
-    nomeArtista: "Nirvana",
-    ano: 1991,
-    urlImagem: "https://upload.wikimedia.org/wikipedia/en/b/b7/NirvanaNevermindalbumcover.jpg"
-  }
-];
+// Credenciais do Spotify Developer
+const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID || '188080a6d78b4f76960f9df95d78eff6';
+const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET || 'c3490384c4e74d0291b84065c0ddf9b3';
 
-let proximoId = 3;
+let spotifyToken = '';
+let tokenExpirationTime = 0;
 
-// ─────────────────────────────────────────────
-//  ROTAS DE ÁLBUNS (CRUD local)
-// ─────────────────────────────────────────────
+// Conexão ao banco SQLite
+conectarBanco()
+  .then(bancoInstancia => {
+    db = bancoInstancia;
+    console.log('📦 Banco de Dados SQLite conectado com sucesso!');
+  })
+  .catch(err => {
+    console.error('❌ Erro ao conectar no SQLite:', err);
+  });
 
-// GET - Todos os álbuns
-app.get('/albuns', (req, res) => {
-  res.json(albuns);
-});
-
-// GET - Álbum específico por ID
-app.get('/albuns/:id', (req, res) => {
-  const id = Number(req.params.id);
-  const album = albuns.find(a => a.id === id);
-  if (!album) return res.status(404).json({ mensagem: 'Não encontrado' });
-  res.json(album);
-});
-
-// POST - Criar álbum
-app.post('/albuns', (req, res) => {
-  const { nomeAlbum, nomeArtista, ano, urlImagem, nota, descricao } = req.body;
-  if (!nomeAlbum || !nomeArtista) {
-    return res.status(400).json({ erro: 'Dados inválidos' });
-  }
-  const novoAlbum = {
-    id: proximoId++,
-    nomeAlbum,
-    nomeArtista,
-    ano: Number(ano) || 2024,
-    urlImagem: urlImagem || '',
-    nota: nota || 5,
-    descricao: descricao || '',
-  };
-  albuns.push(novoAlbum);
-  res.status(201).json(novoAlbum);
-});
-
-// PUT - Atualizar álbum
-app.put('/albuns/:id', (req, res) => {
-  const id = Number(req.params.id);
-  const album = albuns.find(a => a.id === id);
-  if (!album) return res.status(404).json({ mensagem: 'Não encontrado' });
-
-  const { nomeAlbum, nomeArtista, ano, urlImagem, nota, descricao } = req.body;
-  if (!nomeAlbum || !nomeArtista) {
-    return res.status(400).json({ erro: 'Faltam dados' });
-  }
-
-  album.nomeAlbum = nomeAlbum;
-  album.nomeArtista = nomeArtista;
-  album.ano = Number(ano);
-  album.urlImagem = urlImagem;
-  album.nota = nota;
-  album.descricao = descricao;
-
-  res.json(album);
-});
-
-// DELETE - Remover álbum
-app.delete('/albuns/:id', (req, res) => {
-  const id = Number(req.params.id);
-  const indice = albuns.findIndex(a => a.id === id);
-  if (indice === -1) return res.status(404).json({ erro: 'Não encontrado' });
-  albuns.splice(indice, 1);
-  res.status(204).send();
-});
-
-// ─────────────────────────────────────────────
-//  PROXY SPOTIFY (credenciais ficam no servidor)
-// ─────────────────────────────────────────────
-
-let spotifyToken = null;
-let tokenExpiresAt = 0;
-
+// Função para obter o Token de Acesso do Spotify
 async function getSpotifyToken() {
   const agora = Date.now();
-
-  // Reutiliza o token se ainda for válido (com 30s de margem)
-  if (spotifyToken && agora < tokenExpiresAt - 30000) {
+  if (spotifyToken && agora < tokenExpirationTime) {
     return spotifyToken;
   }
 
-  const clientId = process.env.SPOTIFY_CLIENT_ID;
-  const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
+  const response = await fetch('https://accounts.spotify.com/api/token', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Authorization': 'Basic ' + Buffer.from(`${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`).toString('base64'),
+    },
+    body: 'grant_type=client_credentials',
+  });
 
-  if (!clientId || !clientSecret) {
-    throw new Error('Credenciais do Spotify não configuradas no .env');
+  const data = await response.json();
+
+  if (!response.ok) {
+    spotifyToken = '';
+    tokenExpirationTime = 0;
+    throw new Error(data.error_description || data.error || 'Falha de autenticação');
   }
 
-  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
-
-  const response = await axios.post(
-    'https://accounts.spotify.com/api/token',
-    'grant_type=client_credentials',
-    {
-      headers: {
-        Authorization: `Basic ${credentials}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-    }
-  );
-
-  spotifyToken = response.data.access_token;
-  tokenExpiresAt = agora + response.data.expires_in * 1000;
-
-  console.log('🎵 Novo token Spotify obtido. Válido por', response.data.expires_in, 'segundos.');
+  spotifyToken = data.access_token;
+  tokenExpirationTime = agora + (data.expires_in - 60) * 1000;
   return spotifyToken;
 }
 
-// GET /spotify/search?q=termo&limit=8
-app.get('/spotify/search', async (req, res) => {
-  const { q, limit = 8 } = req.query;
-
-  if (!q || !q.trim()) {
-    return res.status(400).json({ erro: 'Parâmetro "q" é obrigatório.' });
-  }
-
+// Busca alternativa via iTunes API (sem limites de quota ou chaves)
+async function buscarNoITunes(termo) {
   try {
-    const token = await getSpotifyToken();
+    const response = await fetch(
+      `https://itunes.apple.com/search?term=${encodeURIComponent(termo)}&entity=album&limit=20`
+    );
+    const data = await response.json();
+    
+    if (!data.results) return [];
 
-    const response = await axios.get('https://api.spotify.com/v1/search', {
-      headers: { Authorization: `Bearer ${token}` },
-      params: {
-        q: q.trim(),
-        type: 'album',
-        limit: Math.min(Number(limit), 20),
-        market: 'BR',
-      },
-    });
-
-    const albums = response.data.albums.items.map(album => ({
-      id: album.id,
-      nomeAlbum: album.name,
-      nomeArtista: album.artists.map(a => a.name).join(', '),
-      ano: album.release_date ? album.release_date.substring(0, 4) : '',
-      urlImagem: album.images && album.images[0] ? album.images[0].url : '',
-      totalFaixas: album.total_tracks,
-      tipo: album.album_type,
+    return data.results.map(item => ({
+      id: String(item.collectionId),
+      idiTunes: String(item.collectionId),
+      nomeAlbum: item.collectionName || 'Sem Nome',
+      nomeArtista: item.artistName || 'Artista Desconhecido',
+      ano: item.releaseDate ? parseInt(item.releaseDate.split('-')[0]) : 2024,
+      urlImagem: item.artworkUrl100 ? item.artworkUrl100.replace('100x100bb', '300x300bb') : ''
     }));
-
-    res.json({ albums });
-  } catch (error) {
-    console.error('Erro Spotify search:', error.response?.data || error.message);
-    res.status(500).json({ erro: 'Falha ao buscar no Spotify.', detalhe: error.message });
+  } catch (err) {
+    console.error('❌ Erro na busca do iTunes:', err.message);
+    return [];
   }
-});
+}
 
-// GET /spotify/album/:id  (detalhes completos de um álbum)
-app.get('/spotify/album/:id', async (req, res) => {
-  const { id } = req.params;
+// ----------------------------------------------------
+// ROTAS DA API
+// ----------------------------------------------------
 
+// 1. Rota de Busca com Fallback Automático
+app.get('/spotify/search', async (req, res) => {
   try {
-    const token = await getSpotifyToken();
+    const { q } = req.query;
+    if (!q || !q.trim()) {
+      return res.json([]);
+    }
 
-    const response = await axios.get(`https://api.spotify.com/v1/albums/${id}`, {
-      headers: { Authorization: `Bearer ${token}` },
-      params: { market: 'BR' },
-    });
+    const termo = q.trim();
 
-    const album = response.data;
-    res.json({
-      id: album.id,
-      nomeAlbum: album.name,
-      nomeArtista: album.artists.map(a => a.name).join(', '),
-      ano: album.release_date ? album.release_date.substring(0, 4) : '',
-      urlImagem: album.images && album.images[0] ? album.images[0].url : '',
-      totalFaixas: album.total_tracks,
-      generos: album.genres,
-      label: album.label,
-      popularidade: album.popularity,
-    });
+    // Tenta buscar no Spotify primeiro
+    try {
+      const token = await getSpotifyToken();
+      
+      const spotifyRes = await fetch(
+        `https://api.spotify.com/v1/search?q=${encodeURIComponent(termo)}&type=album&limit=10`,
+        {
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      );
+
+      const data = await spotifyRes.json();
+
+      if (spotifyRes.ok && data.albums?.items) {
+        const albunsFormatados = data.albums.items.map(item => ({
+          id: item.id,
+          idiTunes: item.id,
+          nomeAlbum: item.name,
+          nomeArtista: item.artists ? item.artists.map(a => a.name).join(', ') : 'Artista Desconhecido',
+          ano: item.release_date ? parseInt(item.release_date.split('-')[0]) : 2024,
+          urlImagem: item.images && item.images[0] ? item.images[0].url : ''
+        }));
+
+        if (albunsFormatados.length > 0) {
+          return res.json(albunsFormatados);
+        }
+      }
+      
+      console.warn('⚠️ Spotify retornou erro ou 0 resultados. Ativando fallback para o iTunes...');
+    } catch (spotifyErr) {
+      console.warn('⚠️ Falha no Spotify:', spotifyErr.message, '- Redirecionando para o iTunes...');
+    }
+
+    // Se o Spotify falhar ou retornar erro, busca no iTunes automaticamente
+    const albunsITunes = await buscarNoITunes(termo);
+    res.json(albunsITunes);
+
   } catch (error) {
-    console.error('Erro Spotify album:', error.response?.data || error.message);
-    res.status(500).json({ erro: 'Falha ao buscar álbum no Spotify.' });
+    console.error('❌ Erro geral na busca:', error.message);
+    res.json([]);
   }
 });
 
-// ─────────────────────────────────────────────
-//  INICIAR SERVIDOR
-// ─────────────────────────────────────────────
+// 2. Listar álbuns salvos
+app.get('/albuns', async (req, res) => {
+  try {
+    if (!db) return res.json([]);
+    const albuns = await db.all('SELECT * FROM albuns ORDER BY id DESC');
+    res.json(albuns);
+  } catch (error) {
+    res.status(500).json({ erro: 'Erro ao buscar álbuns do banco.' });
+  }
+});
 
-const PORTA = process.env.PORT || 3000;
-app.listen(PORTA, () => {
+// 3. Cadastrar álbum
+app.post('/albuns', async (req, res) => {
+  try {
+    if (!db) return res.status(500).json({ erro: 'Banco não inicializado' });
+    const { nomeAlbum, nomeArtista, ano, urlImagem, nota, descricao, usuarioId } = req.body;
+
+    const resultado = await db.run(
+      `INSERT INTO albuns (nomeAlbum, nomeArtista, ano, urlImagem, nota, descricao, usuarioId) 
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        nomeAlbum || 'Sem título',
+        nomeArtista || 'Desconhecido',
+        Number(ano) || 2024,
+        urlImagem || '',
+        nota || 5,
+        descricao || '',
+        usuarioId || null
+      ]
+    );
+
+    res.status(201).json({
+      id: resultado.lastID,
+      nomeAlbum,
+      nomeArtista,
+      ano: Number(ano) || 2024,
+      urlImagem: urlImagem || '',
+      nota: nota || 5,
+      descricao: descricao || '',
+      usuarioId: usuarioId || null
+    });
+  } catch (error) {
+    res.status(500).json({ erro: 'Erro ao cadastrar álbum.' });
+  }
+});
+
+// 4. Eliminar álbum
+app.delete('/albuns/:id', async (req, res) => {
+  try {
+    if (!db) return res.status(500).json({ erro: 'Banco não inicializado' });
+    const { id } = req.params;
+    await db.run('DELETE FROM albuns WHERE id = ?', [id]);
+    res.status(204).send();
+  } catch (error) {
+    res.status(500).json({ erro: 'Erro ao excluir álbum.' });
+  }
+});
+
+// 5. Atualizar álbum
+app.put('/albuns/:id', async (req, res) => {
+  try {
+    if (!db) return res.status(500).json({ erro: 'Banco não inicializado' });
+
+    const { id } = req.params;
+    const { nomeAlbum, nomeArtista, ano, urlImagem, nota, descricao, usuarioId } = req.body;
+
+    const resultado = await db.run(
+      `UPDATE albuns
+       SET nomeAlbum = ?, nomeArtista = ?, ano = ?, urlImagem = ?, nota = ?, descricao = ?, usuarioId = ?
+       WHERE id = ?`,
+      [
+        nomeAlbum || 'Sem título',
+        nomeArtista || 'Desconhecido',
+        Number(ano) || 2024,
+        urlImagem || '',
+        Number(nota) || 5,
+        descricao || '',
+        usuarioId || null,
+        id
+      ]
+    );
+
+    if (resultado.changes === 0) {
+      return res.status(404).json({ erro: 'Álbum não encontrado.' });
+    }
+
+    const albumAtualizado = await db.get('SELECT * FROM albuns WHERE id = ?', [id]);
+    res.json(albumAtualizado);
+  } catch (error) {
+    console.error('Erro ao atualizar álbum:', error);
+    res.status(500).json({ erro: 'Erro ao atualizar álbum.' });
+  }
+});
+
+// Inicialização
+const PORTA = 3000;
+app.listen(PORTA, '0.0.0.0', () => {
   console.log(`🚀 API do Spotikunai rodando em http://localhost:${PORTA}`);
-  console.log(`🎵 Spotify proxy disponível em http://localhost:${PORTA}/spotify/search`);
 });
