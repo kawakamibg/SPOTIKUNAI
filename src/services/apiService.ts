@@ -1,32 +1,6 @@
-import { Platform } from 'react-native';
-import Constants from 'expo-constants';
+import { API_BASE_URL } from './apiConfig';
 
-function resolveApiBaseUrl(): string {
-  if (Platform.OS === 'web') {
-    return 'http://localhost:3000';
-  }
-
-  const hostUri =
-    Constants.expoConfig?.hostUri ??
-    (Constants as any)?.manifest2?.extra?.expoGo?.hostUri ??
-    (Constants as any)?.expoGo?.hostUri ??
-    '';
-
-  if (hostUri) {
-    const host = hostUri.split(':')[0];
-    if (host && host !== 'localhost') {
-      return `http://${host}:3000`;
-    }
-  }
-
-  if (Platform.OS === 'android') {
-    return 'http://10.0.2.2:3000';
-  }
-
-  return 'http://localhost:3000';
-}
-
-const API_BASE = resolveApiBaseUrl();
+const API_BASE = API_BASE_URL;
 const API_URL = `${API_BASE}/albuns`;
 
 export interface AlbumAPI {
