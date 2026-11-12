@@ -102,7 +102,8 @@ export default function Home() {
       Alert.alert('Erro', 'Não foi possível salvar a alteração nos favoritos.');
     }
   }
-  // Busca álbuns via Spotify (proxy pelo servidor Express local)
+
+  // Busca álbuns via Spotify (API no Render)
   const executarBuscaAPI = async () => {
     if (!termoBusca.trim()) {
       Alert.alert('Atenção', 'Digite o nome do álbum ou artista para pesquisar.');
@@ -121,7 +122,7 @@ export default function Home() {
       }
     } catch (error) {
       console.error('Erro ao buscar no Spotify:', error);
-      Alert.alert('Erro', 'Não foi possível conectar ao serviço de busca. Verifique se a API local está rodando.');
+      Alert.alert('Erro', 'Não foi possível conectar ao serviço de busca. Tente novamente em alguns segundos.');
     } finally {
       setBuscandoAPI(false);
     }
@@ -197,17 +198,14 @@ export default function Home() {
   };
 
   const handleAbrirEditar = (item: any) => {
-  setEditingId(item.id);
-  setNomeAlbum(item.nomeAlbum);
-  setNomeArtista(item.nomeArtista);
-  
-  // Garante que lê 'ano' do banco ou 'dataLancamento' se existir
-  setDataLancamento(String(item.ano || item.dataLancamento || '2024'));
-  
-  setUrlImagem(item.urlImagem || '');
-  setNota(item.nota);
-  setReviewText(item.descricao || '');
-  setEtapaModal('formulario');
+    setEditingId(item.id);
+    setNomeAlbum(item.nomeAlbum);
+    setNomeArtista(item.nomeArtista);
+    setDataLancamento(String(item.ano || item.dataLancamento || '2024'));
+    setUrlImagem(item.urlImagem || '');
+    setNota(item.nota);
+    setReviewText(item.descricao || '');
+    setEtapaModal('formulario');
     setModalVisible(true);
   };
 
@@ -233,30 +231,29 @@ export default function Home() {
   };
 
   const handleSalvarAvaliacao = async () => {
-  if (!nomeAlbum.trim() || !nomeArtista.trim()) {
-    Alert.alert("Atenção", "Por favor, preencha pelo menos o nome do álbum e do artista.");
-    return;
-  }
+    if (!nomeAlbum.trim() || !nomeArtista.trim()) {
+      Alert.alert("Atenção", "Por favor, preencha pelo menos o nome do álbum e do artista.");
+      return;
+    }
 
-  // Payload seguro com conversão tratada para ambos os casos (criar e atualizar)
-  const payload = {
-    nomeAlbum: nomeAlbum.trim(),
-    nomeArtista: nomeArtista.trim(),
-    ano: String(dataLancamento || '').trim() || '2024',
-    urlImagem: urlImagem.trim(),
-    nota: nota,
-    descricao: reviewText.trim() || 'Sem review escrita.',
+    const payload = {
+      nomeAlbum: nomeAlbum.trim(),
+      nomeArtista: nomeArtista.trim(),
+      ano: String(dataLancamento || '').trim() || '2024',
+      urlImagem: urlImagem.trim(),
+      nota: nota,
+      descricao: reviewText.trim() || 'Sem review escrita.',
+    };
+
+    if (editingId) {
+      await apiService.atualizarAlbum(editingId, payload);
+    } else {
+      await apiService.criarAlbum(payload);
+    }
+
+    await carregarAlbuns();
+    setModalVisible(false);
   };
-
-  if (editingId) {
-    await apiService.atualizarAlbum(editingId, payload);
-  } else {
-    await apiService.criarAlbum(payload);
-  }
-
-  await carregarAlbuns();
-  setModalVisible(false);
-};
 
   return (
     <LinearGradient colors={['#1DB954', '#191414']} style={styles.container}>
@@ -280,7 +277,7 @@ export default function Home() {
                   <Ionicons name="person" size={20} color="#1DB954" />
                 </View>
               )}
-              <Text style={styles.userGreeting}>{usuarioLogado.nome}</Text>
+              <Text style={styles.userGreeting} numberOfLines={1}>{usuarioLogado.nome}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity 
@@ -305,23 +302,26 @@ export default function Home() {
       </View>
 
       <FlatList
+        style={styles.flatList}
         data={avaliacoes}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => String(item.id)}
         renderItem={({ item }) => (
-          <AlbumCard
-            id={item.id}
-            nomeAlbum={item.nomeAlbum}
-            nomeArtista={item.nomeArtista}
-            dataLancamento={item.dataLancamento}
-            urlImagem={item.urlImagem}
-            nota={item.nota}
-            modoCompacto={modoCompacto}
-            onPress={() => router.push(`/detalhes/${item.id}` as any)}
-            onEdit={() => handleAbrirEditar(item)}
-            onFavorite={() => alternarFavorito(item.id)}
-            isFavorite={favoritos.includes(item.id)}
-            onDelete={() => handleDeletar(item.id, item.nomeAlbum)}
-          />
+          <View style={styles.cardWrapper}>
+            <AlbumCard
+              id={item.id}
+              nomeAlbum={item.nomeAlbum}
+              nomeArtista={item.nomeArtista}
+              dataLancamento={item.dataLancamento}
+              urlImagem={item.urlImagem}
+              nota={item.nota}
+              modoCompacto={modoCompacto}
+              onPress={() => router.push(`/detalhes/${item.id}` as any)}
+              onEdit={() => handleAbrirEditar(item)}
+              onFavorite={() => alternarFavorito(item.id)}
+              isFavorite={favoritos.includes(item.id)}
+              onDelete={() => handleDeletar(item.id, item.nomeAlbum)}
+            />
+          </View>
         )}
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={
@@ -386,13 +386,17 @@ export default function Home() {
 
               <View style={styles.actionRowContainer}>
                 <TouchableOpacity style={styles.loadPrefButton} onPress={carregarGenero} activeOpacity={0.8}>
-                  <Ionicons name="refresh-circle-outline" size={18} color="#1DB954" style={{ marginRight: 4 }} />
-                  <Text style={styles.loadPrefButtonText}>Carregar (getItem)</Text>
+                  <Ionicons name="refresh-circle-outline" size={16} color="#1DB954" style={{ marginRight: 4 }} />
+                  <Text style={styles.loadPrefButtonText} numberOfLines={1} adjustsFontSizeToFit>
+                    Carregar (getItem)
+                  </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.removePrefButton} onPress={removerGenero} activeOpacity={0.8}>
-                  <Ionicons name="trash-outline" size={16} color="#FF6B6B" style={{ marginRight: 4 }} />
-                  <Text style={styles.removePrefButtonText}>Remover (removeItem)</Text>
+                  <Ionicons name="trash-outline" size={15} color="#FF6B6B" style={{ marginRight: 4 }} />
+                  <Text style={styles.removePrefButtonText} numberOfLines={1} adjustsFontSizeToFit>
+                    Remover (removeItem)
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -410,7 +414,9 @@ export default function Home() {
             </View>
 
             <View style={styles.feedHeader}>
-              <Text style={styles.feedTitle}>Minhas Avaliações ({avaliacoes.length})</Text>
+              <Text style={styles.feedTitle} numberOfLines={1}>
+                Avaliações ({avaliacoes.length})
+              </Text>
               <View style={styles.feedActions}>
                 <TouchableOpacity
                   style={styles.favoritesButton}
@@ -418,11 +424,11 @@ export default function Home() {
                   accessibilityRole="button"
                   accessibilityLabel="Abrir favoritos"
                 >
-                  <Ionicons name="heart" size={18} color="#FF6B6B" />
+                  <Ionicons name="heart" size={16} color="#FF6B6B" />
                   <Text style={styles.favoritesButtonText}>Favoritos ({favoritos.length})</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.addReviewButtonSmall} onPress={handleAbrirCriar}>
-                  <Ionicons name="add" size={18} color="#000" />
+                  <Ionicons name="add" size={16} color="#000" />
                   <Text style={styles.addReviewButtonSmallText}>Nova</Text>
                 </TouchableOpacity>
               </View>
@@ -441,7 +447,6 @@ export default function Home() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
             
-            {/* Cabeçalho do Modal */}
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
                 {editingId 
@@ -453,7 +458,6 @@ export default function Home() {
               </TouchableOpacity>
             </View>
 
-            {/* ETAPA 1: BUSCAR E SELECIONAR ÁLBUM */}
             {etapaModal === 'busca' && !editingId && (
               <View>
                 <Text style={styles.inputLabel}>Digite o nome do álbum ou artista:</Text>
@@ -479,7 +483,6 @@ export default function Home() {
                   </TouchableOpacity>
                 </View>
 
-                {/* Lista de Resultados de Busca */}
                 <ScrollView style={styles.resultsScrollView} nestedScrollEnabled>
                   {resultadosBusca.map((item) => (
                     <TouchableOpacity
@@ -522,11 +525,9 @@ export default function Home() {
               </View>
             )}
 
-            {/* ETAPA 2: FORMULÁRIO DE AVALIAÇÃO (REVIEW + ESTRELAS) */}
             {(etapaModal === 'formulario' || editingId) && (
               <ScrollView style={{ maxHeight: 420 }} nestedScrollEnabled>
                 
-                {/* Resumo do Álbum Selecionado */}
                 {urlImagem ? (
                   <View style={styles.selectedAlbumHeader}>
                     <Image source={{ uri: urlImagem }} style={styles.selectedCover} />
@@ -637,7 +638,7 @@ const styles = StyleSheet.create({
   topHeader: {
     width: '100%',
     paddingHorizontal: 16,
-    paddingTop: 48,
+    paddingTop: Platform.OS === 'android' ? 40 : 48,
     paddingBottom: 8,
     alignItems: 'flex-end',
     zIndex: 10,
@@ -700,13 +701,22 @@ const styles = StyleSheet.create({
     borderRadius: 18,
   },
   topButtonText: { color: '#FFFFFF', fontWeight: '600', fontSize: 13 },
+  flatList: {
+    width: '100%',
+  },
   listContent: { 
+    width: '100%',
     paddingHorizontal: 16, 
-    paddingBottom: 30, 
-    alignItems: 'center' 
+    paddingBottom: 84,
+  },
+  cardWrapper: {
+    width: '100%',
+    maxWidth: 500,
+    alignSelf: 'center',
   },
   headerComponent: { 
     alignItems: 'center', 
+    alignSelf: 'center',
     width: '100%', 
     maxWidth: 500 
   },
@@ -772,6 +782,7 @@ const styles = StyleSheet.create({
   },
   loadPrefButton: {
     flex: 1,
+    minHeight: 34,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -782,9 +793,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     borderRadius: 14,
   },
-  loadPrefButtonText: { color: '#1DB954', fontWeight: 'bold', fontSize: 11 },
+  loadPrefButtonText: { color: '#1DB954', fontWeight: 'bold', fontSize: 11, flexShrink: 1 },
   removePrefButton: {
     flex: 1,
+    minHeight: 34,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -795,7 +807,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     borderRadius: 14,
   },
-  removePrefButtonText: { color: '#FF6B6B', fontWeight: 'bold', fontSize: 11 },
+  removePrefButtonText: { color: '#FF6B6B', fontWeight: 'bold', fontSize: 11, flexShrink: 1 },
 
   modeToggleContainer: {
     flexDirection: 'row',
@@ -810,7 +822,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.1)',
   },
-  modeToggleText: { color: '#FFFFFF', fontSize: 13, fontWeight: '600' },
+  modeToggleText: { color: '#FFFFFF', fontSize: 13, fontWeight: '600', flex: 1, marginRight: 8 },
   
   /* Cabeçalho do Feed de Avaliações Corrigido */
   feedHeader: {
@@ -821,11 +833,12 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     paddingHorizontal: 2,
   },
-  feedTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: 'bold' },
+  feedTitle: { color: '#FFFFFF', fontSize: 15, fontWeight: 'bold', flex: 1, marginRight: 8 },
   feedActions: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    flexShrink: 0,
   },
   favoritesButton: {
     flexDirection: 'row',
@@ -842,7 +855,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#1DB954',
     paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     borderRadius: 14,
   },
   addReviewButtonSmallText: { color: '#000000', fontWeight: 'bold', fontSize: 12, marginLeft: 2 },

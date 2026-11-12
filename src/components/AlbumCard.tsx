@@ -37,7 +37,7 @@ export default function AlbumCard({
         <Ionicons
           key={i}
           name={i <= qtd ? 'star' : 'star-outline'}
-          size={modoCompacto ? 14 : 18}
+          size={modoCompacto ? 13 : 16}
           color="#FFD700"
         />
       );
@@ -74,27 +74,33 @@ export default function AlbumCard({
         </View>
       </View>
 
-      {/* Ações: Editar e Excluir */}
+      {/* Ações: Editar, Favoritar e Excluir */}
       <View style={styles.actionsContainer}>
         {onEdit && (
           <TouchableOpacity 
             style={styles.actionButton} 
-            onPress={onEdit}
+            onPress={(e) => {
+              e.stopPropagation?.();
+              onEdit();
+            }}
           >
-            <Ionicons name="pencil" size={18} color="#1DB954" />
+            <Ionicons name="pencil" size={17} color="#1DB954" />
           </TouchableOpacity>
         )}
 
         {onFavorite && (
           <TouchableOpacity
             style={styles.actionButton}
-            onPress={onFavorite}
+            onPress={(e) => {
+              e.stopPropagation?.();
+              onFavorite();
+            }}
             accessibilityRole="button"
             accessibilityLabel={isFavorite ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
           >
             <Ionicons
               name={isFavorite ? 'heart' : 'heart-outline'}
-              size={18}
+              size={17}
               color={isFavorite ? '#FF6B6B' : '#B3B3B3'}
             />
           </TouchableOpacity>
@@ -103,9 +109,12 @@ export default function AlbumCard({
         {onDelete && (
           <TouchableOpacity 
             style={styles.actionButton} 
-            onPress={onDelete}
+            onPress={(e) => {
+              e.stopPropagation?.();
+              onDelete();
+            }}
           >
-            <Ionicons name="trash-outline" size={18} color="#FF6B6B" />
+            <Ionicons name="trash-outline" size={17} color="#FF6B6B" />
           </TouchableOpacity>
         )}
       </View>
@@ -118,11 +127,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: '#181818',
     borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
+    padding: 10,
+    marginBottom: 10,
     alignItems: 'center',
     width: '100%',
     maxWidth: 500,
+    overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.08)',
   },
@@ -131,32 +141,34 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   capa: {
-    width: 70,
-    height: 70,
+    width: 62,
+    height: 62,
     borderRadius: 8,
     backgroundColor: '#282828',
+    flexShrink: 0,
   },
   capaCompacta: {
-    width: 48,
-    height: 48,
+    width: 46,
+    height: 46,
     borderRadius: 6,
   },
   infoContainer: {
     flex: 1,
-    marginLeft: 12,
+    minWidth: 0,
+    marginLeft: 10,
     justifyContent: 'center',
   },
   titulo: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: 'bold',
   },
   tituloCompacto: {
-    fontSize: 14,
+    fontSize: 13,
   },
   artista: {
     color: '#B3B3B3',
-    fontSize: 13,
+    fontSize: 12,
     marginTop: 2,
   },
   ano: {
@@ -164,18 +176,19 @@ const styles = StyleSheet.create({
   },
   avaliacaoContainer: {
     flexDirection: 'row',
-    marginTop: 6,
+    marginTop: 5,
     gap: 2,
   },
   actionsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginLeft: 8,
+    gap: 4,
+    marginLeft: 6,
+    flexShrink: 0,
   },
   actionButton: {
-    padding: 6,
-    borderRadius: 20,
+    padding: 5,
+    borderRadius: 18,
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
   },
 });
